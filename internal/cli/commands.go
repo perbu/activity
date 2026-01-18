@@ -17,6 +17,13 @@ type CLI struct {
 	ShowPrompts ShowPromptsCmd `cmd:"" name:"show-prompts" help:"Show LLM prompts"`
 	Report      ReportCmd      `cmd:"" help:"Generate and view weekly reports"`
 	Newsletter  NewsletterCmd  `cmd:"" help:"Manage newsletter subscribers"`
+	Serve       ServeCmd       `cmd:"" help:"Start the web server"`
+}
+
+// ServeCmd starts the web server for browsing reports
+type ServeCmd struct {
+	Port int    `short:"p" help:"Port to listen on" default:"8080"`
+	Host string `help:"Host to bind to" default:"localhost"`
 }
 
 // ListCmd lists all repositories
