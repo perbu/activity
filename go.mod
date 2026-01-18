@@ -3,6 +3,7 @@ module github.com/perbu/activity
 go 1.25.3
 
 require (
+	github.com/alecthomas/kong v1.13.0
 	github.com/joho/godotenv v1.5.1
 	github.com/sendgrid/sendgrid-go v3.16.1+incompatible
 	github.com/yuin/goldmark v1.7.16

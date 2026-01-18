@@ -1,10 +1,10 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 
+	"github.com/alecthomas/kong"
 	"github.com/joho/godotenv"
 	"github.com/perbu/activity/internal/cli"
 	"github.com/perbu/activity/internal/config"
@@ -24,59 +24,25 @@ func run() error {
 	// Load .env file if present (ignore errors if file doesn't exist)
 	_ = godotenv.Load()
 
-	// Parse global flags
-	globalFlags := flag.NewFlagSet("activity", flag.ExitOnError)
-	configPath := globalFlags.String("config", "", "Config file path (default: ~/.config/activity/config.yaml)")
-	dataDir := globalFlags.String("data-dir", "", "Data directory (overrides config file)")
-	verbose := globalFlags.Bool("verbose", false, "Verbose output")
-	quiet := globalFlags.Bool("quiet", false, "Minimal output")
-	globalFlags.BoolVar(verbose, "v", false, "Verbose output (shorthand)")
-	globalFlags.BoolVar(quiet, "q", false, "Minimal output (shorthand)")
-
-	// Custom usage
-	globalFlags.Usage = func() {
-		printUsage()
-	}
-
-	// Parse global flags
-	if len(os.Args) < 2 {
-		printUsage()
-		return nil
-	}
-
-	// Check for help or version flags
-	if os.Args[1] == "-h" || os.Args[1] == "--help" || os.Args[1] == "help" {
-		printUsage()
-		return nil
-	}
-	if os.Args[1] == "--version" || os.Args[1] == "version" {
-		fmt.Printf("activity version %s\n", version)
-		return nil
-	}
-
-	// Find where the subcommand starts
-	subcommandIdx := 1
-	for i := 1; i < len(os.Args); i++ {
-		if !isFlag(os.Args[i]) {
-			subcommandIdx = i
-			break
-		}
-	}
-
-	// Parse global flags before the subcommand
-	if err := globalFlags.Parse(os.Args[1:subcommandIdx]); err != nil {
-		return err
-	}
+	var cliArgs cli.CLI
+	kongCtx := kong.Parse(&cliArgs,
+		kong.Name("activity"),
+		kong.Description("Git repository activity analyzer"),
+		kong.UsageOnError(),
+		kong.Vars{
+			"version": version,
+		},
+	)
 
 	// Load configuration
-	cfg, err := config.Load(*configPath)
+	cfg, err := config.Load(cliArgs.Config)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	// Override data dir if specified
-	if *dataDir != "" {
-		cfg.DataDir = *dataDir
+	if cliArgs.DataDir != "" {
+		cfg.DataDir = cliArgs.DataDir
 	}
 
 	// Require data directory to be specified
@@ -97,123 +63,13 @@ func run() error {
 	defer database.Close()
 
 	// Create context
-	ctx := &cli.Context{
+	appCtx := &cli.Context{
 		DB:      database,
 		Config:  cfg,
-		Verbose: *verbose,
-		Quiet:   *quiet,
+		Verbose: cliArgs.Verbose,
+		Quiet:   cliArgs.Quiet,
 	}
 
-	// Get subcommand
-	if subcommandIdx >= len(os.Args) {
-		printUsage()
-		return nil
-	}
-
-	subcommand := os.Args[subcommandIdx]
-	args := os.Args[subcommandIdx+1:]
-
-	// Route to subcommand
-	switch subcommand {
-	case "list":
-		return cli.List(ctx, args)
-	case "analyze":
-		return cli.Analyze(ctx, args)
-	case "update":
-		return cli.Update(ctx, args)
-	case "repo":
-		return cli.Repo(ctx, args)
-	case "show-prompts":
-		return cli.ShowPrompts(ctx, args)
-	case "newsletter":
-		return cli.Newsletter(ctx, args)
-	case "report":
-		return cli.Report(ctx, args)
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", subcommand)
-		printUsage()
-		return fmt.Errorf("unknown command: %s", subcommand)
-	}
-}
-
-func isFlag(arg string) bool {
-	return len(arg) > 0 && arg[0] == '-'
-}
-
-func printUsage() {
-	fmt.Println(`Activity - Git repository change analyzer
-
-Usage:
-  activity [global flags] <command> [command flags] [arguments]
-
-Global Flags:
-  --config=<path>     Config file (default: ~/.config/activity/config.yaml)
-  --data-dir=<path>   Data directory (required)
-  --verbose, -v       Verbose output
-  --quiet, -q         Minimal output
-  --version           Show version
-  --help, -h          Show this help
-
-Commands:
-  list                List all repositories
-  analyze [repo...]   Analyze repository activity (requires --since, --until, or -n)
-  update [repo...]    Update repositories (git pull)
-  repo <subcommand>   Manage repositories
-  report <subcommand> Generate and view weekly reports
-  newsletter <subcommand>
-                      Manage newsletter subscriptions and send emails
-  show-prompts        Display current analysis prompts
-
-Repository Management:
-  repo add <name> <url> [--branch=main]
-                      Add a repository
-  repo remove <name> [--keep-files]
-                      Remove a repository
-  repo activate <name>
-                      Activate a repository
-  repo deactivate <name>
-                      Deactivate a repository
-  repo info <name>    Show repository details
-  repo list           List all repositories (alias for 'list')
-
-Weekly Reports:
-  report generate <repo> --week=2026-W02
-                      Generate report for specific week
-  report generate <repo> --since=2025-01-01
-                      Backfill reports since date
-  report generate <repo> ... --force
-                      Regenerate existing reports
-  report show <repo> [--week=2026-W02|--latest]
-                      Show stored report
-  report list <repo> [--year=2026]
-                      List reports for repository
-  report list --all [--year=2026]
-                      List all reports
-
-Newsletter Management:
-  newsletter subscriber add [--all] <email>
-                      Add a subscriber (--all = subscribe to all repos)
-  newsletter subscriber remove <email>
-                      Remove a subscriber
-  newsletter subscriber list
-                      List all subscribers
-  newsletter subscribe <email> <repo>
-                      Subscribe to a specific repository
-  newsletter unsubscribe <email> <repo>
-                      Unsubscribe from a repository
-  newsletter send [--dry-run] [--since=7d]
-                      Send newsletters to all subscribers
-
-Examples:
-  activity repo add myproject https://github.com/user/repo
-  activity list
-  activity update myproject
-  activity analyze myproject --since '1 week ago'
-  activity analyze myproject -n 5
-  activity report generate myproject --week=2026-W03
-  activity report show myproject --latest
-  activity newsletter subscriber add user@example.com --all
-  activity newsletter send --dry-run --since=7d
-
-For more information, visit: https://github.com/perbu/activity`)
+	// Run the selected command
+	return kongCtx.Run(appCtx)
 }

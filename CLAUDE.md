@@ -8,7 +8,7 @@ This tool analyzes git commit history using AI to generate human-readable activi
 
 ### `main.go`
 
-Main entry point at the root for simple `go install`. Defines CLI structure using flag-based subcommands (init, add, update, show, list). Wires together configuration, database, git operations, LLM client, and analyzer components. Handles initialization of the data directory and database schema.
+Main entry point at the root for simple `go install`. Uses kong for CLI parsing with struct-tag based command definitions. Wires together configuration, database, git operations, LLM client, and analyzer components. Handles initialization of the data directory and database schema.
 
 ### `internal/config`
 
@@ -32,7 +32,7 @@ Core analysis logic with three modes: Phase 2 (simple LLM), Phase 3 (agent with 
 
 ### `internal/cli`
 
-CLI command implementations. Commands include: `repo` (add/remove/list repos), `analyze` (analyze commits), `update` (pull and analyze), `report` (generate/show/list weekly reports), and `newsletter` (subscriber management). The `report` command supports backfill via `--since` flag and week-specific generation via `--week` flag.
+CLI command implementations using kong's struct-tag based approach. Command structs are defined in `commands.go` with kong tags for flags, args, and help text. Each command struct has a `Run(ctx *Context) error` method. Commands include: `repo` (add/remove/list repos), `analyze` (analyze commits), `update` (pull and analyze), `report` (generate/show/list weekly reports), and `newsletter` (subscriber management). Flags can appear in any position relative to commands.
 
 ## Phase Architecture
 

@@ -20,7 +20,7 @@ AI-powered git commit analyzer that generates human-readable summaries of reposi
 ## Installation
 
 ```bash
-go install github.com/perbu/activity/cmd/activity@latest
+go install github.com/perbu/activity@latest
 ```
 
 Or build from source:
@@ -28,7 +28,7 @@ Or build from source:
 ```bash
 git clone https://github.com/perbu/activity
 cd activity
-go build -o activity ./cmd/activity
+go build .
 ```
 
 ## Quick Start
@@ -38,20 +38,25 @@ go build -o activity ./cmd/activity
 export GOOGLE_API_KEY=your-api-key
 ```
 
-2. Initialize and add a repository:
+2. Add a repository:
 ```bash
-activity --data-dir ~/.local/share/activity init
-activity --data-dir ~/.local/share/activity add myproject https://github.com/user/repo
+activity --data-dir ~/.local/share/activity repo add myproject https://github.com/user/repo
 ```
 
 3. Analyze commits:
 ```bash
-activity --data-dir ~/.local/share/activity update myproject
+activity --data-dir ~/.local/share/activity analyze myproject --since '1 week ago'
 ```
 
-4. View summary:
+4. Or update and analyze new commits:
 ```bash
-activity --data-dir ~/.local/share/activity show myproject
+activity --data-dir ~/.local/share/activity update myproject --analyze
+```
+
+Note: Flags can appear in any position, so these are equivalent:
+```bash
+activity --data-dir ~/.local/share/activity repo add myproject https://github.com/user/repo
+activity repo add myproject https://github.com/user/repo --data-dir ~/.local/share/activity
 ```
 
 ## Configuration
@@ -106,26 +111,37 @@ Enable by setting `use_agent: false` in config.
 
 ```bash
 # Add repository
-activity add <name> <url> [--branch main]
+activity repo add <name> <url> [--branch main]
 
 # List repositories
 activity list
+activity repo list  # alias
 
 # Remove repository
-activity remove <name>
+activity repo remove <name> [--keep-files]
+
+# Show repository info
+activity repo info <name>
+
+# Activate/deactivate repository
+activity repo activate <name>
+activity repo deactivate <name>
 ```
 
 ### Analysis
 
 ```bash
-# Analyze new commits
+# Analyze commits since date
+activity analyze <name> --since '1 week ago'
+activity analyze <name> --since 2024-01-01 --until 2024-01-31
+
+# Analyze last N commits
+activity analyze <name> -n 10
+
+# Update repository and optionally analyze new commits
 activity update <name>
-
-# Show latest summary
-activity show <name>
-
-# Force re-analyze from specific commit
-activity update <name> --from-sha abc123
+activity update <name> --analyze
+activity update --all  # Update all active repositories
 ```
 
 ### Weekly Reports
@@ -155,14 +171,14 @@ activity report list <name>
 activity report list --all --year=2026
 ```
 
-### Configuration
+### Prompts
 
 ```bash
-# Initialize data directory
-activity init
+# Show current LLM prompts (custom or default)
+activity show-prompts
 
-# Show current configuration
-activity config
+# Show default prompts even if custom ones are configured
+activity show-prompts --defaults
 ```
 
 ## Cost Controls
@@ -201,14 +217,16 @@ See `CLAUDE.md` for architecture overview and package descriptions.
 ### Project Structure
 
 ```
-cmd/activity/          - CLI entry point
+main.go               - CLI entry point (uses kong for parsing)
 internal/
   analyzer/           - Analysis logic (Phase 2 + Phase 3)
-  cli/                - Command implementations
+  cli/                - Command structs and Run methods (kong-based)
   config/             - Configuration management
   db/                 - Database layer
+  email/              - Email client for newsletters
   git/                - Git operations
   llm/                - LLM client abstraction
+  newsletter/         - Newsletter composition and sending
 ```
 
 ## License

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,60 +8,16 @@ import (
 	"github.com/perbu/activity/internal/git"
 )
 
-// Repo handles the 'repo' subcommand
-func Repo(ctx *Context, args []string) error {
-	if len(args) == 0 {
-		printRepoUsage()
-		return nil
-	}
-
-	subcommand := args[0]
-	subArgs := args[1:]
-
-	switch subcommand {
-	case "add":
-		return repoAdd(ctx, subArgs)
-	case "remove":
-		return repoRemove(ctx, subArgs)
-	case "activate":
-		return repoActivate(ctx, subArgs)
-	case "deactivate":
-		return repoDeactivate(ctx, subArgs)
-	case "info":
-		return repoInfo(ctx, subArgs)
-	case "list":
-		return List(ctx, subArgs)
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown repo subcommand: %s\n\n", subcommand)
-		printRepoUsage()
-		return fmt.Errorf("unknown repo subcommand: %s", subcommand)
-	}
-}
-
-func repoAdd(ctx *Context, args []string) error {
-	flags := flag.NewFlagSet("repo add", flag.ExitOnError)
-	branch := flags.String("branch", "main", "Branch to track")
-
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-
-	if flags.NArg() != 2 {
-		fmt.Fprintf(os.Stderr, "Usage: activity repo add [--branch=main] <name> <url>\n")
-		return fmt.Errorf("requires exactly 2 arguments: name and url")
-	}
-
-	name := flags.Arg(0)
-	url := flags.Arg(1)
-
+// Run executes the repo add command
+func (c *RepoAddCmd) Run(ctx *Context) error {
 	// Check if repo already exists
-	_, err := ctx.DB.GetRepositoryByName(name)
+	_, err := ctx.DB.GetRepositoryByName(c.Name)
 	if err == nil {
-		return fmt.Errorf("repository '%s' already exists", name)
+		return fmt.Errorf("repository '%s' already exists", c.Name)
 	}
 
 	// Create local path
-	localPath := filepath.Join(ctx.Config.DataDir, name)
+	localPath := filepath.Join(ctx.Config.DataDir, c.Name)
 
 	// Check if directory already exists
 	if _, err := os.Stat(localPath); err == nil {
@@ -70,11 +25,11 @@ func repoAdd(ctx *Context, args []string) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("Cloning %s to %s...\n", url, localPath)
+		fmt.Printf("Cloning %s to %s...\n", c.URL, localPath)
 	}
 
 	// Clone repository
-	if err := git.Clone(url, localPath, *branch); err != nil {
+	if err := git.Clone(c.URL, localPath, c.Branch); err != nil {
 		return fmt.Errorf("failed to clone repository: %w", err)
 	}
 
@@ -85,17 +40,17 @@ func repoAdd(ctx *Context, args []string) error {
 	}
 
 	// Create database entry
-	repo, err := ctx.DB.CreateRepository(name, url, *branch, localPath)
+	repo, err := ctx.DB.CreateRepository(c.Name, c.URL, c.Branch, localPath)
 	if err != nil {
 		return fmt.Errorf("failed to create repository: %w", err)
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("Repository '%s' added successfully\n", name)
+		fmt.Printf("Repository '%s' added successfully\n", c.Name)
 		if ctx.Verbose {
 			fmt.Printf("  ID: %d\n", repo.ID)
-			fmt.Printf("  URL: %s\n", url)
-			fmt.Printf("  Branch: %s\n", *branch)
+			fmt.Printf("  URL: %s\n", c.URL)
+			fmt.Printf("  Branch: %s\n", c.Branch)
 			fmt.Printf("  Path: %s\n", localPath)
 			fmt.Printf("  Current SHA: %s\n", sha)
 		}
@@ -104,25 +59,12 @@ func repoAdd(ctx *Context, args []string) error {
 	return nil
 }
 
-func repoRemove(ctx *Context, args []string) error {
-	flags := flag.NewFlagSet("repo remove", flag.ExitOnError)
-	keepFiles := flags.Bool("keep-files", false, "Keep cloned files")
-
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-
-	if flags.NArg() != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: activity repo remove [--keep-files] <name>\n")
-		return fmt.Errorf("requires exactly 1 argument: name")
-	}
-
-	name := flags.Arg(0)
-
+// Run executes the repo remove command
+func (c *RepoRemoveCmd) Run(ctx *Context) error {
 	// Get repository
-	repo, err := ctx.DB.GetRepositoryByName(name)
+	repo, err := ctx.DB.GetRepositoryByName(c.Name)
 	if err != nil {
-		return fmt.Errorf("repository not found: %s", name)
+		return fmt.Errorf("repository not found: %s", c.Name)
 	}
 
 	// Delete from database
@@ -131,7 +73,7 @@ func repoRemove(ctx *Context, args []string) error {
 	}
 
 	// Delete files if requested
-	if !*keepFiles {
+	if !c.KeepFiles {
 		if !ctx.Quiet {
 			fmt.Printf("Removing files from %s...\n", repo.LocalPath)
 		}
@@ -141,28 +83,22 @@ func repoRemove(ctx *Context, args []string) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("Repository '%s' removed successfully\n", name)
+		fmt.Printf("Repository '%s' removed successfully\n", c.Name)
 	}
 
 	return nil
 }
 
-func repoActivate(ctx *Context, args []string) error {
-	if len(args) != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: activity repo activate <name>\n")
-		return fmt.Errorf("requires exactly 1 argument: name")
-	}
-
-	name := args[0]
-
-	repo, err := ctx.DB.GetRepositoryByName(name)
+// Run executes the repo activate command
+func (c *RepoActivateCmd) Run(ctx *Context) error {
+	repo, err := ctx.DB.GetRepositoryByName(c.Name)
 	if err != nil {
-		return fmt.Errorf("repository not found: %s", name)
+		return fmt.Errorf("repository not found: %s", c.Name)
 	}
 
 	if repo.Active {
 		if !ctx.Quiet {
-			fmt.Printf("Repository '%s' is already active\n", name)
+			fmt.Printf("Repository '%s' is already active\n", c.Name)
 		}
 		return nil
 	}
@@ -172,28 +108,22 @@ func repoActivate(ctx *Context, args []string) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("Repository '%s' activated\n", name)
+		fmt.Printf("Repository '%s' activated\n", c.Name)
 	}
 
 	return nil
 }
 
-func repoDeactivate(ctx *Context, args []string) error {
-	if len(args) != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: activity repo deactivate <name>\n")
-		return fmt.Errorf("requires exactly 1 argument: name")
-	}
-
-	name := args[0]
-
-	repo, err := ctx.DB.GetRepositoryByName(name)
+// Run executes the repo deactivate command
+func (c *RepoDeactivateCmd) Run(ctx *Context) error {
+	repo, err := ctx.DB.GetRepositoryByName(c.Name)
 	if err != nil {
-		return fmt.Errorf("repository not found: %s", name)
+		return fmt.Errorf("repository not found: %s", c.Name)
 	}
 
 	if !repo.Active {
 		if !ctx.Quiet {
-			fmt.Printf("Repository '%s' is already inactive\n", name)
+			fmt.Printf("Repository '%s' is already inactive\n", c.Name)
 		}
 		return nil
 	}
@@ -203,23 +133,17 @@ func repoDeactivate(ctx *Context, args []string) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("Repository '%s' deactivated\n", name)
+		fmt.Printf("Repository '%s' deactivated\n", c.Name)
 	}
 
 	return nil
 }
 
-func repoInfo(ctx *Context, args []string) error {
-	if len(args) != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: activity repo info <name>\n")
-		return fmt.Errorf("requires exactly 1 argument: name")
-	}
-
-	name := args[0]
-
-	repo, err := ctx.DB.GetRepositoryByName(name)
+// Run executes the repo info command
+func (c *RepoInfoCmd) Run(ctx *Context) error {
+	repo, err := ctx.DB.GetRepositoryByName(c.Name)
 	if err != nil {
-		return fmt.Errorf("repository not found: %s", name)
+		return fmt.Errorf("repository not found: %s", c.Name)
 	}
 
 	// Get current SHA
@@ -247,29 +171,4 @@ func repoInfo(ctx *Context, args []string) error {
 	fmt.Printf("  Current SHA: %s\n", currentSHA)
 
 	return nil
-}
-
-func printRepoUsage() {
-	fmt.Println(`Repository management commands
-
-Usage:
-  activity repo <subcommand> [flags] [arguments]
-
-Subcommands:
-  add [--branch=main] <name> <url>
-                      Add a repository
-  remove [--keep-files] <name>
-                      Remove a repository
-  activate <name>     Activate a repository
-  deactivate <name>   Deactivate a repository
-  info <name>         Show repository details
-  list                List all repositories
-
-Examples:
-  activity repo add myproject https://github.com/user/repo
-  activity repo add --branch=develop myproject https://github.com/user/repo
-  activity repo remove myproject
-  activity repo remove --keep-files myproject
-  activity repo info myproject
-  activity repo list`)
 }

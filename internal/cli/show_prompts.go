@@ -1,22 +1,14 @@
 package cli
 
 import (
-	"flag"
 	"fmt"
 	"strings"
 
 	"github.com/perbu/activity/internal/config"
 )
 
-// ShowPrompts displays the current prompts being used (custom or default)
-func ShowPrompts(ctx *Context, args []string) error {
-	flags := flag.NewFlagSet("show-prompts", flag.ExitOnError)
-	showDefaults := flags.Bool("defaults", false, "Show default prompts even if custom ones are configured")
-
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-
+// Run executes the show-prompts command
+func (c *ShowPromptsCmd) Run(ctx *Context) error {
 	// Determine which prompts to show
 	phase2Prompt := ctx.Config.GetPhase2Prompt()
 	agentPrompt := ctx.Config.GetAgentSystemPrompt()
@@ -31,9 +23,9 @@ func ShowPrompts(ctx *Context, args []string) error {
 
 	// Show Phase 2 Prompt
 	fmt.Println("Phase 2 (Simple LLM) Prompt:")
-	if isPhase2Custom && !*showDefaults {
+	if isPhase2Custom && !c.Defaults {
 		fmt.Println("  Source: Custom (from config)")
-	} else if *showDefaults {
+	} else if c.Defaults {
 		fmt.Println("  Source: Default")
 		phase2Prompt = config.DefaultPhase2Prompt
 	} else {
@@ -47,9 +39,9 @@ func ShowPrompts(ctx *Context, args []string) error {
 
 	// Show Agent Prompt
 	fmt.Println("Phase 3 (Agent) System Prompt:")
-	if isAgentCustom && !*showDefaults {
+	if isAgentCustom && !c.Defaults {
 		fmt.Println("  Source: Custom (from config)")
-	} else if *showDefaults {
+	} else if c.Defaults {
 		fmt.Println("  Source: Default")
 		agentPrompt = config.DefaultAgentSystemPrompt
 	} else {

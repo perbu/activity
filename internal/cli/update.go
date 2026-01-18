@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"database/sql"
-	"flag"
 	"fmt"
 	"os"
 	"time"
@@ -13,18 +12,11 @@ import (
 	"github.com/perbu/activity/internal/llm"
 )
 
-// Update pulls updates for repositories
-func Update(ctx *Context, args []string) error {
-	flags := flag.NewFlagSet("update", flag.ExitOnError)
-	all := flags.Bool("all", false, "Update all active repositories")
-	analyze := flags.Bool("analyze", false, "Analyze new commits with AI after updating")
-
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-
+// Run executes the update command
+func (c *UpdateCmd) Run(ctx *Context) error {
 	var repoNames []string
-	if *all {
+
+	if c.All {
 		// Get all active repositories
 		activeFlag := true
 		repos, err := ctx.DB.ListRepositories(&activeFlag)
@@ -44,16 +36,15 @@ func Update(ctx *Context, args []string) error {
 		}
 	} else {
 		// Use specified repositories
-		if flags.NArg() == 0 {
-			fmt.Fprintf(os.Stderr, "Usage: activity update [repo...] [--all]\n")
+		if len(c.Repos) == 0 {
 			return fmt.Errorf("requires repository names or --all flag")
 		}
-		repoNames = flags.Args()
+		repoNames = c.Repos
 	}
 
 	// Update each repository
 	for _, name := range repoNames {
-		if err := updateRepository(ctx, name, *analyze); err != nil {
+		if err := updateRepository(ctx, name, c.Analyze); err != nil {
 			fmt.Fprintf(os.Stderr, "Error updating %s: %v\n", name, err)
 			continue
 		}

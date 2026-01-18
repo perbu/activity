@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"time"
@@ -11,87 +10,25 @@ import (
 	"github.com/perbu/activity/internal/newsletter"
 )
 
-// Newsletter handles the 'newsletter' subcommand
-func Newsletter(ctx *Context, args []string) error {
-	if len(args) == 0 {
-		printNewsletterUsage()
-		return nil
-	}
-
-	subcommand := args[0]
-	subArgs := args[1:]
-
-	switch subcommand {
-	case "subscriber":
-		return newsletterSubscriber(ctx, subArgs)
-	case "subscribe":
-		return newsletterSubscribe(ctx, subArgs)
-	case "unsubscribe":
-		return newsletterUnsubscribe(ctx, subArgs)
-	case "send":
-		return newsletterSend(ctx, subArgs)
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown newsletter subcommand: %s\n\n", subcommand)
-		printNewsletterUsage()
-		return fmt.Errorf("unknown newsletter subcommand: %s", subcommand)
-	}
-}
-
-func newsletterSubscriber(ctx *Context, args []string) error {
-	if len(args) == 0 {
-		printSubscriberUsage()
-		return nil
-	}
-
-	subcommand := args[0]
-	subArgs := args[1:]
-
-	switch subcommand {
-	case "add":
-		return subscriberAdd(ctx, subArgs)
-	case "remove":
-		return subscriberRemove(ctx, subArgs)
-	case "list":
-		return subscriberList(ctx, subArgs)
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown subscriber subcommand: %s\n\n", subcommand)
-		printSubscriberUsage()
-		return fmt.Errorf("unknown subscriber subcommand: %s", subcommand)
-	}
-}
-
-func subscriberAdd(ctx *Context, args []string) error {
-	flags := flag.NewFlagSet("subscriber add", flag.ExitOnError)
-	all := flags.Bool("all", false, "Subscribe to all repositories")
-
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-
-	if flags.NArg() != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: activity newsletter subscriber add [--all] <email>\n")
-		return fmt.Errorf("requires exactly 1 argument: email")
-	}
-
-	emailAddr := flags.Arg(0)
-
+// Run executes the subscriber add command
+func (c *SubscriberAddCmd) Run(ctx *Context) error {
 	// Check if subscriber already exists
-	_, err := ctx.DB.GetSubscriberByEmail(emailAddr)
+	_, err := ctx.DB.GetSubscriberByEmail(c.Email)
 	if err == nil {
-		return fmt.Errorf("subscriber '%s' already exists", emailAddr)
+		return fmt.Errorf("subscriber '%s' already exists", c.Email)
 	}
 
 	// Create subscriber
-	sub, err := ctx.DB.CreateSubscriber(emailAddr, *all)
+	sub, err := ctx.DB.CreateSubscriber(c.Email, c.All)
 	if err != nil {
 		return fmt.Errorf("failed to create subscriber: %w", err)
 	}
 
 	if !ctx.Quiet {
-		if *all {
-			fmt.Printf("Subscriber '%s' added (subscribed to all repositories)\n", emailAddr)
+		if c.All {
+			fmt.Printf("Subscriber '%s' added (subscribed to all repositories)\n", c.Email)
 		} else {
-			fmt.Printf("Subscriber '%s' added\n", emailAddr)
+			fmt.Printf("Subscriber '%s' added\n", c.Email)
 		}
 		if ctx.Verbose {
 			fmt.Printf("  ID: %d\n", sub.ID)
@@ -102,17 +39,11 @@ func subscriberAdd(ctx *Context, args []string) error {
 	return nil
 }
 
-func subscriberRemove(ctx *Context, args []string) error {
-	if len(args) != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: activity newsletter subscriber remove <email>\n")
-		return fmt.Errorf("requires exactly 1 argument: email")
-	}
-
-	emailAddr := args[0]
-
-	sub, err := ctx.DB.GetSubscriberByEmail(emailAddr)
+// Run executes the subscriber remove command
+func (c *SubscriberRemoveCmd) Run(ctx *Context) error {
+	sub, err := ctx.DB.GetSubscriberByEmail(c.Email)
 	if err != nil {
-		return fmt.Errorf("subscriber not found: %s", emailAddr)
+		return fmt.Errorf("subscriber not found: %s", c.Email)
 	}
 
 	if err := ctx.DB.DeleteSubscriber(sub.ID); err != nil {
@@ -120,13 +51,14 @@ func subscriberRemove(ctx *Context, args []string) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("Subscriber '%s' removed\n", emailAddr)
+		fmt.Printf("Subscriber '%s' removed\n", c.Email)
 	}
 
 	return nil
 }
 
-func subscriberList(ctx *Context, _ []string) error {
+// Run executes the subscriber list command
+func (c *SubscriberListCmd) Run(ctx *Context) error {
 	subscribers, err := ctx.DB.ListSubscribers()
 	if err != nil {
 		return fmt.Errorf("failed to list subscribers: %w", err)
@@ -169,35 +101,28 @@ func subscriberList(ctx *Context, _ []string) error {
 	return nil
 }
 
-func newsletterSubscribe(ctx *Context, args []string) error {
-	if len(args) != 2 {
-		fmt.Fprintf(os.Stderr, "Usage: activity newsletter subscribe <email> <repo>\n")
-		return fmt.Errorf("requires exactly 2 arguments: email and repo")
-	}
-
-	emailAddr := args[0]
-	repoName := args[1]
-
+// Run executes the newsletter subscribe command
+func (c *NewsletterSubscribeCmd) Run(ctx *Context) error {
 	// Get subscriber
-	sub, err := ctx.DB.GetSubscriberByEmail(emailAddr)
+	sub, err := ctx.DB.GetSubscriberByEmail(c.Email)
 	if err != nil {
-		return fmt.Errorf("subscriber not found: %s", emailAddr)
+		return fmt.Errorf("subscriber not found: %s", c.Email)
 	}
 
 	if sub.SubscribeAll {
-		return fmt.Errorf("subscriber '%s' is already subscribed to all repositories", emailAddr)
+		return fmt.Errorf("subscriber '%s' is already subscribed to all repositories", c.Email)
 	}
 
 	// Get repository
-	repo, err := ctx.DB.GetRepositoryByName(repoName)
+	repo, err := ctx.DB.GetRepositoryByName(c.Repo)
 	if err != nil {
-		return fmt.Errorf("repository not found: %s", repoName)
+		return fmt.Errorf("repository not found: %s", c.Repo)
 	}
 
 	// Check if already subscribed
 	_, err = ctx.DB.GetSubscriptionBySubscriberAndRepo(sub.ID, repo.ID)
 	if err == nil {
-		return fmt.Errorf("'%s' is already subscribed to '%s'", emailAddr, repoName)
+		return fmt.Errorf("'%s' is already subscribed to '%s'", c.Email, c.Repo)
 	}
 
 	// Create subscription
@@ -207,31 +132,24 @@ func newsletterSubscribe(ctx *Context, args []string) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("'%s' subscribed to '%s'\n", emailAddr, repoName)
+		fmt.Printf("'%s' subscribed to '%s'\n", c.Email, c.Repo)
 	}
 
 	return nil
 }
 
-func newsletterUnsubscribe(ctx *Context, args []string) error {
-	if len(args) != 2 {
-		fmt.Fprintf(os.Stderr, "Usage: activity newsletter unsubscribe <email> <repo>\n")
-		return fmt.Errorf("requires exactly 2 arguments: email and repo")
-	}
-
-	emailAddr := args[0]
-	repoName := args[1]
-
+// Run executes the newsletter unsubscribe command
+func (c *NewsletterUnsubscribeCmd) Run(ctx *Context) error {
 	// Get subscriber
-	sub, err := ctx.DB.GetSubscriberByEmail(emailAddr)
+	sub, err := ctx.DB.GetSubscriberByEmail(c.Email)
 	if err != nil {
-		return fmt.Errorf("subscriber not found: %s", emailAddr)
+		return fmt.Errorf("subscriber not found: %s", c.Email)
 	}
 
 	// Get repository
-	repo, err := ctx.DB.GetRepositoryByName(repoName)
+	repo, err := ctx.DB.GetRepositoryByName(c.Repo)
 	if err != nil {
-		return fmt.Errorf("repository not found: %s", repoName)
+		return fmt.Errorf("repository not found: %s", c.Repo)
 	}
 
 	// Delete subscription
@@ -240,41 +158,34 @@ func newsletterUnsubscribe(ctx *Context, args []string) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("'%s' unsubscribed from '%s'\n", emailAddr, repoName)
+		fmt.Printf("'%s' unsubscribed from '%s'\n", c.Email, c.Repo)
 	}
 
 	return nil
 }
 
-func newsletterSend(ctx *Context, args []string) error {
-	flags := flag.NewFlagSet("newsletter send", flag.ExitOnError)
-	dryRun := flags.Bool("dry-run", false, "Preview what would be sent without actually sending")
-	sinceStr := flags.String("since", "7d", "Send activity since (e.g., 7d, 24h, 1w)")
-
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-
+// Run executes the newsletter send command
+func (c *NewsletterSendCmd) Run(ctx *Context) error {
 	// Parse since duration
-	since, err := parseSinceDuration(*sinceStr)
+	since, err := parseSinceDuration(c.Since)
 	if err != nil {
 		return fmt.Errorf("invalid --since value: %w", err)
 	}
 
 	// Check if newsletter is enabled
-	if !ctx.Config.Newsletter.Enabled && !*dryRun {
+	if !ctx.Config.Newsletter.Enabled && !c.DryRun {
 		return fmt.Errorf("newsletter is not enabled in config (set newsletter.enabled: true)")
 	}
 
 	// Get or validate API key
 	apiKey := ctx.Config.GetSendGridAPIKey()
-	if apiKey == "" && !*dryRun {
+	if apiKey == "" && !c.DryRun {
 		return fmt.Errorf("SendGrid API key not configured")
 	}
 
 	// Create email client
 	var client email.Sender
-	if *dryRun {
+	if c.DryRun {
 		client = email.NewDryRunClient(ctx.Config.Newsletter.FromEmail, ctx.Config.Newsletter.FromName)
 	} else {
 		client = email.NewClient(apiKey, ctx.Config.Newsletter.FromEmail, ctx.Config.Newsletter.FromName)
@@ -282,11 +193,11 @@ func newsletterSend(ctx *Context, args []string) error {
 
 	// Create composer and sender
 	composer := newsletter.NewComposer(ctx.DB, ctx.Config.Newsletter.SubjectPrefix)
-	sender := newsletter.NewSender(ctx.DB, composer, client, *dryRun, os.Stdout)
+	sender := newsletter.NewSender(ctx.DB, composer, client, c.DryRun, os.Stdout)
 
 	if !ctx.Quiet {
 		sinceTime := time.Now().Add(-since)
-		if *dryRun {
+		if c.DryRun {
 			fmt.Printf("Dry run: checking for activity since %s\n\n", sinceTime.Format("2006-01-02 15:04"))
 		} else {
 			fmt.Printf("Sending newsletters for activity since %s\n\n", sinceTime.Format("2006-01-02 15:04"))
@@ -337,45 +248,4 @@ func parseSinceDuration(s string) (time.Duration, error) {
 	}
 
 	return time.Duration(num) * multiplier, nil
-}
-
-func printNewsletterUsage() {
-	fmt.Println(`Newsletter management commands
-
-Usage:
-  activity newsletter <subcommand> [flags] [arguments]
-
-Subcommands:
-  subscriber add [--all] <email>
-                      Add a subscriber (--all = subscribe to all repos)
-  subscriber remove <email>
-                      Remove a subscriber
-  subscriber list     List all subscribers
-
-  subscribe <email> <repo>
-                      Subscribe an email to a specific repository
-  unsubscribe <email> <repo>
-                      Unsubscribe an email from a repository
-
-  send [--dry-run] [--since=7d]
-                      Send newsletters to all subscribers
-
-Examples:
-  activity newsletter subscriber add user@example.com --all
-  activity newsletter subscriber add user@example.com
-  activity newsletter subscribe user@example.com myproject
-  activity newsletter send --dry-run --since=7d
-  activity newsletter send --since=24h`)
-}
-
-func printSubscriberUsage() {
-	fmt.Println(`Subscriber management commands
-
-Usage:
-  activity newsletter subscriber <subcommand> [flags] [arguments]
-
-Subcommands:
-  add [--all] <email>   Add a subscriber
-  remove <email>        Remove a subscriber
-  list                  List all subscribers`)
 }

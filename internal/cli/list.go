@@ -2,7 +2,6 @@ package cli
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -11,23 +10,24 @@ import (
 	"github.com/perbu/activity/internal/git"
 )
 
-// List lists all repositories
-func List(ctx *Context, args []string) error {
-	flags := flag.NewFlagSet("list", flag.ExitOnError)
-	format := flags.String("format", "table", "Output format: table or json")
-	active := flags.Bool("active", false, "Show only active repositories")
-	inactive := flags.Bool("inactive", false, "Show only inactive repositories")
+// Run executes the list command
+func (c *ListCmd) Run(ctx *Context) error {
+	return listRepositories(ctx, c.Format, c.Active, c.Inactive)
+}
 
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
+// Run executes the repo list command (alias)
+func (c *RepoListCmd) Run(ctx *Context) error {
+	return listRepositories(ctx, c.Format, c.Active, c.Inactive)
+}
 
+// listRepositories is the shared implementation for list commands
+func listRepositories(ctx *Context, format string, active, inactive bool) error {
 	// Determine filter
 	var activeFilter *bool
-	if *active && !*inactive {
+	if active && !inactive {
 		t := true
 		activeFilter = &t
-	} else if *inactive && !*active {
+	} else if inactive && !active {
 		f := false
 		activeFilter = &f
 	}
@@ -47,13 +47,13 @@ func List(ctx *Context, args []string) error {
 	}
 
 	// Output based on format
-	switch *format {
+	switch format {
 	case "json":
 		return outputJSON(repos)
 	case "table":
 		return outputTable(ctx, repos)
 	default:
-		return fmt.Errorf("unknown format: %s", *format)
+		return fmt.Errorf("unknown format: %s", format)
 	}
 }
 

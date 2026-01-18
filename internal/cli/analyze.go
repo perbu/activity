@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -12,44 +11,24 @@ import (
 	"github.com/perbu/activity/internal/llm"
 )
 
-// Analyze analyzes activity for repositories
-func Analyze(ctx *Context, args []string) error {
-	flags := flag.NewFlagSet("analyze", flag.ExitOnError)
-	since := flags.String("since", "", "Analyze commits since this date (e.g., 2024-01-01, '1 week ago')")
-	until := flags.String("until", "", "Analyze commits until this date")
-	n := flags.Int("n", 0, "Analyze last N commits")
-	limit := flags.Int("limit", 10, "Maximum number of commits to display in fallback mode")
-
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-
-	repoNames := flags.Args()
-	if len(repoNames) == 0 {
-		fmt.Fprintf(os.Stderr, "Usage: activity analyze <repo...> [--since=<date>] [--until=<date>] [-n=<count>]\n")
-		fmt.Fprintf(os.Stderr, "\nExamples:\n")
-		fmt.Fprintf(os.Stderr, "  activity analyze myrepo --since '1 week ago'\n")
-		fmt.Fprintf(os.Stderr, "  activity analyze myrepo --since 2024-01-01 --until 2024-01-31\n")
-		fmt.Fprintf(os.Stderr, "  activity analyze myrepo -n 5\n")
-		return fmt.Errorf("requires at least one repository name")
-	}
-
+// Run executes the analyze command
+func (c *AnalyzeCmd) Run(ctx *Context) error {
 	// Validate flags: at least one of --since, --until, or -n must be provided
-	if *since == "" && *until == "" && *n == 0 {
+	if c.Since == "" && c.Until == "" && c.N == 0 {
 		return fmt.Errorf("at least one of --since, --until, or -n must be provided")
 	}
 
 	// Validate flags: -n is mutually exclusive with date flags
-	if *n > 0 && (*since != "" || *until != "") {
+	if c.N > 0 && (c.Since != "" || c.Until != "") {
 		return fmt.Errorf("-n cannot be used with --since or --until")
 	}
 
-	for i, name := range repoNames {
+	for i, name := range c.Repos {
 		if i > 0 {
 			fmt.Println()
 		}
 
-		if err := analyzeRepository(ctx, name, *since, *until, *n, *limit); err != nil {
+		if err := analyzeRepository(ctx, name, c.Since, c.Until, c.N, c.Limit); err != nil {
 			fmt.Fprintf(os.Stderr, "Error analyzing %s: %v\n", name, err)
 			continue
 		}
@@ -107,7 +86,7 @@ func analyzeRepository(ctx *Context, name, since, until string, n, limit int) er
 
 	// Determine SHA range for analyzer
 	var fromSHA, toSHA string
-	toSHA = commits[0].SHA                    // Most recent commit
+	toSHA = commits[0].SHA // Most recent commit
 	if len(commits) > 1 {
 		fromSHA = commits[len(commits)-1].SHA // Oldest commit (exclusive in git range)
 	}

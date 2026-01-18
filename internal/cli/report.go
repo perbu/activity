@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -16,109 +15,37 @@ import (
 	"github.com/perbu/activity/internal/llm"
 )
 
-// Report handles the report subcommand
-func Report(ctx *Context, args []string) error {
-	if len(args) == 0 {
-		printReportUsage()
-		return fmt.Errorf("requires a subcommand")
-	}
-
-	subcommand := args[0]
-	subArgs := args[1:]
-
-	switch subcommand {
-	case "generate":
-		return reportGenerate(ctx, subArgs)
-	case "show":
-		return reportShow(ctx, subArgs)
-	case "list":
-		return reportList(ctx, subArgs)
-	default:
-		printReportUsage()
-		return fmt.Errorf("unknown report subcommand: %s", subcommand)
-	}
-}
-
-func printReportUsage() {
-	fmt.Fprintln(os.Stderr, `Usage: activity report <subcommand> [options]
-
-Subcommands:
-  generate <repo> [options]   Generate weekly report(s)
-  show <repo> [options]       Show stored report
-  list <repo|--all> [options] List reports
-
-Generate options:
-  --week=2026-W02            Generate report for specific week
-  --since=2025-01-01         Backfill all weeks since date
-  --force                    Regenerate existing reports
-
-Show options:
-  --week=2026-W02            Show report for specific week
-  --latest                   Show most recent report (default)
-
-List options:
-  --all                      List reports for all repositories
-  --year=2026                Filter by year
-
-Examples:
-  activity report generate myrepo --week=2026-W02
-  activity report generate myrepo --since=2025-12-01
-  activity report generate myrepo --since=2025-12-01 --force
-  activity report show myrepo --latest
-  activity report show myrepo --week=2026-W02
-  activity report list myrepo
-  activity report list --all --year=2026`)
-}
-
-func reportGenerate(ctx *Context, args []string) error {
-	flags := flag.NewFlagSet("report generate", flag.ExitOnError)
-	week := flags.String("week", "", "Generate report for specific ISO week (e.g., 2026-W02)")
-	since := flags.String("since", "", "Backfill all weeks since date (e.g., 2025-01-01)")
-	force := flags.Bool("force", false, "Regenerate existing reports")
-
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-
-	repoNames := flags.Args()
-	if len(repoNames) == 0 {
-		return fmt.Errorf("requires a repository name")
-	}
-	if len(repoNames) > 1 {
-		return fmt.Errorf("only one repository can be specified")
-	}
-
-	repoName := repoNames[0]
-
+// Run executes the report generate command
+func (c *ReportGenerateCmd) Run(ctx *Context) error {
 	// Validate flags
-	if *week == "" && *since == "" {
+	if c.Week == "" && c.Since == "" {
 		return fmt.Errorf("either --week or --since must be specified")
 	}
-	if *week != "" && *since != "" {
+	if c.Week != "" && c.Since != "" {
 		return fmt.Errorf("--week and --since are mutually exclusive")
 	}
 
 	// Get repository
-	repo, err := ctx.DB.GetRepositoryByName(repoName)
+	repo, err := ctx.DB.GetRepositoryByName(c.Repo)
 	if err != nil {
-		return fmt.Errorf("repository not found: %s", repoName)
+		return fmt.Errorf("repository not found: %s", c.Repo)
 	}
 
 	// Determine weeks to generate
 	var weeksToGenerate [][2]int
 
-	if *week != "" {
+	if c.Week != "" {
 		// Single week
-		year, wk, err := git.ParseISOWeek(*week)
+		year, wk, err := git.ParseISOWeek(c.Week)
 		if err != nil {
 			return err
 		}
 		weeksToGenerate = append(weeksToGenerate, [2]int{year, wk})
 	} else {
 		// Backfill since date
-		sinceTime, err := time.Parse("2006-01-02", *since)
+		sinceTime, err := time.Parse("2006-01-02", c.Since)
 		if err != nil {
-			return fmt.Errorf("invalid date format: %s (expected YYYY-MM-DD)", *since)
+			return fmt.Errorf("invalid date format: %s (expected YYYY-MM-DD)", c.Since)
 		}
 		weeksToGenerate = git.WeeksInRange(sinceTime, time.Now())
 	}
@@ -152,7 +79,7 @@ func reportGenerate(ctx *Context, args []string) error {
 			return fmt.Errorf("failed to check existing report: %w", err)
 		}
 
-		if exists && !*force {
+		if exists && !c.Force {
 			if ctx.Verbose {
 				fmt.Printf("  %s: skipped (already exists)\n", weekStr)
 			}
@@ -292,36 +219,19 @@ func buildReportMetadata(commits []git.Commit) ReportMetadata {
 	}
 }
 
-func reportShow(ctx *Context, args []string) error {
-	flags := flag.NewFlagSet("report show", flag.ExitOnError)
-	week := flags.String("week", "", "Show report for specific ISO week (e.g., 2026-W02)")
-	_ = flags.Bool("latest", false, "Show most recent report (default)")
-
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-
-	repoNames := flags.Args()
-	if len(repoNames) == 0 {
-		return fmt.Errorf("requires a repository name")
-	}
-	if len(repoNames) > 1 {
-		return fmt.Errorf("only one repository can be specified")
-	}
-
-	repoName := repoNames[0]
-
+// Run executes the report show command
+func (c *ReportShowCmd) Run(ctx *Context) error {
 	// Get repository
-	repo, err := ctx.DB.GetRepositoryByName(repoName)
+	repo, err := ctx.DB.GetRepositoryByName(c.Repo)
 	if err != nil {
-		return fmt.Errorf("repository not found: %s", repoName)
+		return fmt.Errorf("repository not found: %s", c.Repo)
 	}
 
 	// Get the report
 	var report *db.WeeklyReport
 
-	if *week != "" {
-		year, wk, err := git.ParseISOWeek(*week)
+	if c.Week != "" {
+		year, wk, err := git.ParseISOWeek(c.Week)
 		if err != nil {
 			return err
 		}
@@ -330,7 +240,7 @@ func reportShow(ctx *Context, args []string) error {
 			return fmt.Errorf("failed to get report: %w", err)
 		}
 		if report == nil {
-			return fmt.Errorf("no report found for %s week %s", repoName, *week)
+			return fmt.Errorf("no report found for %s week %s", c.Repo, c.Week)
 		}
 	} else {
 		// Default to latest
@@ -339,7 +249,7 @@ func reportShow(ctx *Context, args []string) error {
 			return fmt.Errorf("failed to get latest report: %w", err)
 		}
 		if report == nil {
-			return fmt.Errorf("no reports found for %s", repoName)
+			return fmt.Errorf("no reports found for %s", c.Repo)
 		}
 	}
 
@@ -387,39 +297,25 @@ func displayReport(_ *Context, repo *db.Repository, report *db.WeeklyReport) {
 	}
 }
 
-func reportList(ctx *Context, args []string) error {
-	flags := flag.NewFlagSet("report list", flag.ExitOnError)
-	all := flags.Bool("all", false, "List reports for all repositories")
-	year := flags.Int("year", 0, "Filter by year")
-
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-
-	repoNames := flags.Args()
-
+// Run executes the report list command
+func (c *ReportListCmd) Run(ctx *Context) error {
 	var yearFilter *int
-	if *year > 0 {
-		yearFilter = year
+	if c.Year > 0 {
+		yearFilter = &c.Year
 	}
 
-	if *all {
+	if c.All {
 		return listAllReports(ctx, yearFilter)
 	}
 
-	if len(repoNames) == 0 {
+	if c.Repo == "" {
 		return fmt.Errorf("requires a repository name or --all flag")
 	}
-	if len(repoNames) > 1 {
-		return fmt.Errorf("only one repository can be specified")
-	}
-
-	repoName := repoNames[0]
 
 	// Get repository
-	repo, err := ctx.DB.GetRepositoryByName(repoName)
+	repo, err := ctx.DB.GetRepositoryByName(c.Repo)
 	if err != nil {
-		return fmt.Errorf("repository not found: %s", repoName)
+		return fmt.Errorf("repository not found: %s", c.Repo)
 	}
 
 	// List reports
@@ -429,11 +325,11 @@ func reportList(ctx *Context, args []string) error {
 	}
 
 	if len(reports) == 0 {
-		fmt.Printf("No reports found for %s\n", repoName)
+		fmt.Printf("No reports found for %s\n", c.Repo)
 		return nil
 	}
 
-	fmt.Printf("Reports for %s:\n\n", repoName)
+	fmt.Printf("Reports for %s:\n\n", c.Repo)
 	printReportTable(reports)
 	return nil
 }
