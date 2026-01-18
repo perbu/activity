@@ -3,7 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
+	"log/slog"
 	"strings"
 
 	"github.com/perbu/activity/internal/analyzer"
@@ -29,7 +29,7 @@ func (c *AnalyzeCmd) Run(ctx *Context) error {
 		}
 
 		if err := analyzeRepository(ctx, name, c.Since, c.Until, c.N, c.Limit); err != nil {
-			fmt.Fprintf(os.Stderr, "Error analyzing %s: %v\n", name, err)
+			slog.Error("Failed to analyze repository", "name", name, "error", err)
 			continue
 		}
 	}
@@ -95,8 +95,7 @@ func analyzeRepository(ctx *Context, name, since, until string, n, limit int) er
 	// Initialize LLM client
 	llmClient, err := llm.NewClient(context.Background(), ctx.Config)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Failed to initialize AI analysis: %v\n", err)
-		fmt.Println("Falling back to git log display.")
+		slog.Warn("Failed to initialize AI analysis, falling back to git log", "error", err)
 		// Fall through to show commits
 	} else {
 		defer llmClient.Close()
@@ -107,8 +106,7 @@ func analyzeRepository(ctx *Context, name, since, until string, n, limit int) er
 		// Analyze and save
 		run, err := llmAnalyzer.AnalyzeAndSave(context.Background(), repo, fromSHA, toSHA, commits)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: Analysis failed: %v\n", err)
-			fmt.Println("Falling back to git log display.")
+			slog.Warn("Analysis failed, falling back to git log", "error", err)
 			// Fall through to show commits
 		} else {
 			// Display AI-generated summary

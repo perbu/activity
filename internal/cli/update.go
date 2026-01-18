@@ -2,12 +2,12 @@ package cli
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
-	"os"
+	"log/slog"
 	"time"
 
 	"github.com/perbu/activity/internal/analyzer"
+	"github.com/perbu/activity/internal/db"
 	"github.com/perbu/activity/internal/git"
 	"github.com/perbu/activity/internal/llm"
 )
@@ -26,7 +26,7 @@ func (c *UpdateCmd) Run(ctx *Context) error {
 
 		if len(repos) == 0 {
 			if !ctx.Quiet {
-				fmt.Println("No active repositories found")
+				slog.Info("No active repositories found")
 			}
 			return nil
 		}
@@ -45,7 +45,7 @@ func (c *UpdateCmd) Run(ctx *Context) error {
 	// Update each repository
 	for _, name := range repoNames {
 		if err := updateRepository(ctx, name, c.Analyze); err != nil {
-			fmt.Fprintf(os.Stderr, "Error updating %s: %v\n", name, err)
+			slog.Error("Failed to update repository", "name", name, "error", err)
 			continue
 		}
 	}
@@ -61,7 +61,7 @@ func updateRepository(ctx *Context, name string, analyze bool) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("Updating %s...\n", name)
+		slog.Info("Updating repository", "name", name)
 	}
 
 	// Get current SHA before pull
@@ -103,7 +103,7 @@ func updateRepository(ctx *Context, name string, analyze bool) error {
 	// Check if there were changes
 	if beforeSHA == afterSHA {
 		if !ctx.Quiet {
-			fmt.Printf("  %s is already up to date\n", name)
+			slog.Info("Repository already up to date", "name", name)
 		}
 	} else {
 		// Get commit range
@@ -113,48 +113,90 @@ func updateRepository(ctx *Context, name string, analyze bool) error {
 		}
 
 		if !ctx.Quiet {
-			fmt.Printf("  Updated %s: %d new commit(s)\n", name, len(commits))
+			slog.Info("Repository updated", "name", name, "commits", len(commits))
 			if ctx.Verbose {
 				for _, commit := range commits {
-					fmt.Printf("    %s %s\n", commit.SHA[:7], commit.Message)
+					slog.Debug("New commit", "sha", commit.SHA[:7], "message", commit.Message)
 				}
 			}
 		}
 
-		// After successful update, check for AI analysis
-		if analyze && len(commits) > 0 {
-			if !ctx.Quiet {
-				fmt.Printf("  Analyzing %d new commits...\n", len(commits))
-			}
+	}
 
-			// Initialize LLM and analyzer
-			llmClient, err := llm.NewClient(context.Background(), ctx.Config)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "  Warning: Failed to initialize AI: %v\n", err)
-				return nil
-			}
-			defer llmClient.Close()
-
-			llmAnalyzer := analyzer.New(llmClient, ctx.DB, ctx.Config)
-
-			// Analyze and save
-			_, err = llmAnalyzer.AnalyzeAndSave(context.Background(), repo, beforeSHA, afterSHA, commits)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "  Warning: Analysis failed: %v\n", err)
-				return nil
-			}
-
-			// Update repository
-			repo.LastRunAt = sql.NullTime{Time: time.Now(), Valid: true}
-			repo.LastRunSHA = sql.NullString{String: afterSHA, Valid: true}
-			if err := ctx.DB.UpdateRepository(repo); err != nil {
-				fmt.Fprintf(os.Stderr, "  Warning: Failed to update repository: %v\n", err)
-			}
-
-			if !ctx.Quiet {
-				fmt.Printf("  Analysis complete\n")
-			}
+	// Generate weekly report for the last complete week if --analyze is set
+	if analyze {
+		if err := generateLastWeekReport(ctx, repo); err != nil {
+			slog.Warn("Failed to generate weekly report", "error", err)
 		}
+	}
+
+	return nil
+}
+
+// generateLastWeekReport generates the weekly report for the previous complete week if it doesn't exist
+func generateLastWeekReport(ctx *Context, repo *db.Repository) error {
+	// Calculate the previous complete week
+	now := time.Now()
+	year, week := now.ISOWeek()
+
+	// Go back to previous week
+	week--
+	if week < 1 {
+		year--
+		// Get the last week of the previous year
+		lastDayOfPrevYear := time.Date(year, 12, 31, 0, 0, 0, 0, time.UTC)
+		_, week = lastDayOfPrevYear.ISOWeek()
+	}
+
+	weekStr := git.FormatISOWeek(year, week)
+
+	// Check if report already exists
+	exists, err := ctx.DB.WeeklyReportExists(repo.ID, year, week)
+	if err != nil {
+		return fmt.Errorf("failed to check existing report: %w", err)
+	}
+
+	if exists {
+		if ctx.Verbose {
+			slog.Debug("Weekly report already exists, skipping", "week", weekStr)
+		}
+		return nil
+	}
+
+	// Get commits for this week
+	commits, err := git.GetCommitsForWeek(repo.LocalPath, year, week)
+	if err != nil {
+		return fmt.Errorf("failed to get commits for %s: %w", weekStr, err)
+	}
+
+	if len(commits) == 0 {
+		if ctx.Verbose {
+			slog.Debug("No commits in week, skipping report", "week", weekStr)
+		}
+		return nil
+	}
+
+	if !ctx.Quiet {
+		slog.Info("Generating weekly report", "week", weekStr, "commits", len(commits))
+	}
+
+	// Initialize LLM client
+	llmClient, err := llm.NewClient(context.Background(), ctx.Config)
+	if err != nil {
+		return fmt.Errorf("failed to initialize LLM client: %w", err)
+	}
+	defer llmClient.Close()
+
+	// Create analyzer and generate report
+	llmAnalyzer := analyzer.New(llmClient, ctx.DB, ctx.Config)
+
+	_, err = generateWeeklyReport(ctx, llmAnalyzer, repo, year, week, commits, false)
+	if err != nil {
+		return fmt.Errorf("failed to generate report: %w", err)
+	}
+
+	if !ctx.Quiet {
+		slog.Info("Weekly report generated", "week", weekStr)
 	}
 
 	return nil

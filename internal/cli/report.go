@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"os"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -51,7 +51,7 @@ func (c *ReportGenerateCmd) Run(ctx *Context) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("Generating %d report(s) for %s\n", len(weeksToGenerate), repo.Name)
+		slog.Info("Generating reports", "count", len(weeksToGenerate), "repo", repo.Name)
 	}
 
 	// Initialize LLM client
@@ -81,7 +81,7 @@ func (c *ReportGenerateCmd) Run(ctx *Context) error {
 
 		if exists && !c.Force {
 			if ctx.Verbose {
-				fmt.Printf("  %s: skipped (already exists)\n", weekStr)
+				slog.Debug("Report skipped, already exists", "week", weekStr)
 			}
 			skipped++
 			continue
@@ -90,13 +90,13 @@ func (c *ReportGenerateCmd) Run(ctx *Context) error {
 		// Get commits for this week
 		commits, err := git.GetCommitsForWeek(repo.LocalPath, year, wk)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "  %s: error getting commits: %v\n", weekStr, err)
+			slog.Error("Failed to get commits", "week", weekStr, "error", err)
 			continue
 		}
 
 		if len(commits) == 0 {
 			if ctx.Verbose {
-				fmt.Printf("  %s: no commits\n", weekStr)
+				slog.Debug("No commits in week", "week", weekStr)
 			}
 			noCommits++
 			continue
@@ -104,24 +104,23 @@ func (c *ReportGenerateCmd) Run(ctx *Context) error {
 
 		// Generate report
 		if !ctx.Quiet {
-			fmt.Printf("  %s: analyzing %d commits...\n", weekStr, len(commits))
+			slog.Info("Analyzing commits", "week", weekStr, "commits", len(commits))
 		}
 
 		report, err := generateWeeklyReport(ctx, llmAnalyzer, repo, year, wk, commits, exists)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "  %s: error generating report: %v\n", weekStr, err)
+			slog.Error("Failed to generate report", "week", weekStr, "error", err)
 			continue
 		}
 
 		if ctx.Verbose {
-			fmt.Printf("  %s: generated (id=%d, commits=%d)\n", weekStr, report.ID, report.CommitCount)
+			slog.Debug("Report generated", "week", weekStr, "id", report.ID, "commits", report.CommitCount)
 		}
 		generated++
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("\nSummary: %d generated, %d skipped, %d weeks with no commits\n",
-			generated, skipped, noCommits)
+		slog.Info("Report generation complete", "generated", generated, "skipped", skipped, "no_commits", noCommits)
 	}
 
 	return nil

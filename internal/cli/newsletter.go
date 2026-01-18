@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -25,15 +26,7 @@ func (c *SubscriberAddCmd) Run(ctx *Context) error {
 	}
 
 	if !ctx.Quiet {
-		if c.All {
-			fmt.Printf("Subscriber '%s' added (subscribed to all repositories)\n", c.Email)
-		} else {
-			fmt.Printf("Subscriber '%s' added\n", c.Email)
-		}
-		if ctx.Verbose {
-			fmt.Printf("  ID: %d\n", sub.ID)
-			fmt.Printf("  Created: %s\n", sub.CreatedAt.Format("2006-01-02 15:04:05"))
-		}
+		slog.Info("Subscriber added", "email", c.Email, "subscribe_all", c.All, "id", sub.ID)
 	}
 
 	return nil
@@ -51,7 +44,7 @@ func (c *SubscriberRemoveCmd) Run(ctx *Context) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("Subscriber '%s' removed\n", c.Email)
+		slog.Info("Subscriber removed", "email", c.Email)
 	}
 
 	return nil
@@ -132,7 +125,7 @@ func (c *NewsletterSubscribeCmd) Run(ctx *Context) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("'%s' subscribed to '%s'\n", c.Email, c.Repo)
+		slog.Info("Subscribed to repository", "email", c.Email, "repo", c.Repo)
 	}
 
 	return nil
@@ -158,7 +151,7 @@ func (c *NewsletterUnsubscribeCmd) Run(ctx *Context) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("'%s' unsubscribed from '%s'\n", c.Email, c.Repo)
+		slog.Info("Unsubscribed from repository", "email", c.Email, "repo", c.Repo)
 	}
 
 	return nil
@@ -197,11 +190,7 @@ func (c *NewsletterSendCmd) Run(ctx *Context) error {
 
 	if !ctx.Quiet {
 		sinceTime := time.Now().Add(-since)
-		if c.DryRun {
-			fmt.Printf("Dry run: checking for activity since %s\n\n", sinceTime.Format("2006-01-02 15:04"))
-		} else {
-			fmt.Printf("Sending newsletters for activity since %s\n\n", sinceTime.Format("2006-01-02 15:04"))
-		}
+		slog.Info("Sending newsletters", "since", sinceTime.Format("2006-01-02 15:04"), "dry_run", c.DryRun)
 	}
 
 	// Send to all subscribers
@@ -211,8 +200,7 @@ func (c *NewsletterSendCmd) Run(ctx *Context) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("\nSummary: %d sent, %d skipped, %d errors (of %d subscribers)\n",
-			result.Sent, result.Skipped, result.Errors, result.TotalSubscribers)
+		slog.Info("Newsletter send complete", "sent", result.Sent, "skipped", result.Skipped, "errors", result.Errors, "total_subscribers", result.TotalSubscribers)
 	}
 
 	return nil

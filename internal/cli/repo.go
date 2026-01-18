@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,10 +36,7 @@ func (c *RepoAddCmd) Run(ctx *Context) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("Cloning %s to %s...\n", c.URL, localPath)
-		if c.Private {
-			fmt.Println("  (using GitHub App authentication)")
-		}
+		slog.Info("Cloning repository", "url", c.URL, "path", localPath, "private", c.Private)
 	}
 
 	// Clone repository (with auth if private)
@@ -65,17 +63,17 @@ func (c *RepoAddCmd) Run(ctx *Context) error {
 	// Generate description from README
 	var description sql.NullString
 	if !ctx.Quiet {
-		fmt.Println("Generating description from README...")
+		slog.Info("Generating description from README")
 	}
 	desc, err := generateDescription(ctx, localPath)
 	if err != nil {
 		if !ctx.Quiet {
-			fmt.Printf("  Note: Could not generate description: %v\n", err)
+			slog.Warn("Could not generate description", "error", err)
 		}
 	} else if desc != "" {
 		description = sql.NullString{String: desc, Valid: true}
 		if !ctx.Quiet && ctx.Verbose {
-			fmt.Printf("  Description: %s\n", desc)
+			slog.Debug("Generated description", "description", desc)
 		}
 	}
 
@@ -86,18 +84,7 @@ func (c *RepoAddCmd) Run(ctx *Context) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("Repository '%s' added successfully\n", c.Name)
-		if ctx.Verbose {
-			fmt.Printf("  ID: %d\n", repo.ID)
-			fmt.Printf("  URL: %s\n", c.URL)
-			fmt.Printf("  Branch: %s\n", c.Branch)
-			fmt.Printf("  Path: %s\n", localPath)
-			fmt.Printf("  Private: %v\n", c.Private)
-			fmt.Printf("  Current SHA: %s\n", sha)
-			if repo.Description.Valid {
-				fmt.Printf("  Description: %s\n", repo.Description.String)
-			}
-		}
+		slog.Info("Repository added", "name", c.Name, "id", repo.ID, "url", c.URL, "branch", c.Branch, "path", localPath, "private", c.Private, "sha", sha)
 	}
 
 	return nil
@@ -173,15 +160,15 @@ func (c *RepoRemoveCmd) Run(ctx *Context) error {
 	// Delete files if requested
 	if !c.KeepFiles {
 		if !ctx.Quiet {
-			fmt.Printf("Removing files from %s...\n", repo.LocalPath)
+			slog.Info("Removing repository files", "path", repo.LocalPath)
 		}
 		if err := os.RemoveAll(repo.LocalPath); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to remove files: %v\n", err)
+			slog.Warn("Failed to remove files", "path", repo.LocalPath, "error", err)
 		}
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("Repository '%s' removed successfully\n", c.Name)
+		slog.Info("Repository removed", "name", c.Name)
 	}
 
 	return nil
@@ -196,7 +183,7 @@ func (c *RepoActivateCmd) Run(ctx *Context) error {
 
 	if repo.Active {
 		if !ctx.Quiet {
-			fmt.Printf("Repository '%s' is already active\n", c.Name)
+			slog.Info("Repository already active", "name", c.Name)
 		}
 		return nil
 	}
@@ -206,7 +193,7 @@ func (c *RepoActivateCmd) Run(ctx *Context) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("Repository '%s' activated\n", c.Name)
+		slog.Info("Repository activated", "name", c.Name)
 	}
 
 	return nil
@@ -221,7 +208,7 @@ func (c *RepoDeactivateCmd) Run(ctx *Context) error {
 
 	if !repo.Active {
 		if !ctx.Quiet {
-			fmt.Printf("Repository '%s' is already inactive\n", c.Name)
+			slog.Info("Repository already inactive", "name", c.Name)
 		}
 		return nil
 	}
@@ -231,7 +218,7 @@ func (c *RepoDeactivateCmd) Run(ctx *Context) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("Repository '%s' deactivated\n", c.Name)
+		slog.Info("Repository deactivated", "name", c.Name)
 	}
 
 	return nil
@@ -298,11 +285,7 @@ func (c *RepoSetURLCmd) Run(ctx *Context) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("Repository '%s' URL updated\n", c.Name)
-		if ctx.Verbose {
-			fmt.Printf("  Old URL: %s\n", oldURL)
-			fmt.Printf("  New URL: %s\n", c.URL)
-		}
+		slog.Info("Repository URL updated", "name", c.Name, "old_url", oldURL, "new_url", c.URL)
 	}
 
 	return nil
@@ -333,14 +316,15 @@ func (c *RepoDescribeCmd) Run(ctx *Context) error {
 		}
 
 		if !ctx.Quiet {
-			fmt.Printf("Description set for '%s':\n%s\n", repo.Name, c.Set)
+			slog.Info("Description set", "name", repo.Name)
+			fmt.Println(c.Set)
 		}
 		return nil
 	}
 
 	// Generate new description from README
 	if !ctx.Quiet {
-		fmt.Printf("Generating description for '%s'...\n", repo.Name)
+		slog.Info("Generating description", "name", repo.Name)
 	}
 
 	desc, err := generateDescription(ctx, repo.LocalPath)
@@ -350,7 +334,7 @@ func (c *RepoDescribeCmd) Run(ctx *Context) error {
 
 	if desc == "" {
 		if !ctx.Quiet {
-			fmt.Println("No description could be generated (no README found or empty)")
+			slog.Warn("No description could be generated", "reason", "no README found or empty")
 		}
 		return nil
 	}
@@ -362,7 +346,8 @@ func (c *RepoDescribeCmd) Run(ctx *Context) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("Description updated for '%s':\n%s\n", repo.Name, desc)
+		slog.Info("Description updated", "name", repo.Name)
+		fmt.Println(desc)
 	}
 
 	return nil

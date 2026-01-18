@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/perbu/activity/internal/web"
 )
@@ -14,8 +15,7 @@ func (c *ServeCmd) Run(ctx *Context) error {
 	}
 
 	if !ctx.Quiet {
-		fmt.Printf("Starting web server at %s\n", server.Address())
-		fmt.Printf("Press Ctrl+C to stop\n")
+		slog.Info("Starting web server", "address", server.Address())
 	}
 
 	return server.Start()
