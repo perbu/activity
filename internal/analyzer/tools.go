@@ -3,12 +3,22 @@ package analyzer
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"strings"
 
 	"github.com/perbu/activity/internal/git"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
 )
+
+// shortSHA returns a shortened SHA for logging
+func shortSHA(sha string) string {
+	if len(sha) > 8 {
+		return sha[:8]
+	}
+	return sha
+}
 
 // GetCommitDiffTool provides access to commit diffs for the agent
 type GetCommitDiffTool struct {
@@ -91,9 +101,12 @@ func (t *GetCommitDiffTool) Run(ctx tool.Context, args any) (map[string]any, err
 		return map[string]any{"error": "reason must be a string"}, nil
 	}
 
+	slog.Debug("tool call", "tool", "get_commit_diff", "sha", shortSHA(commitSHA), "reason", reason)
+
 	// Pre-flight check: can we fetch more?
 	canFetch, msg := t.costTracker.CanFetchMore()
 	if !canFetch {
+		slog.Debug("diff fetch denied", "sha", shortSHA(commitSHA), "reason", msg)
 		return map[string]any{
 			"error":   msg,
 			"message": "Cannot fetch more diffs. Consider summarizing based on commit messages alone.",
@@ -103,6 +116,7 @@ func (t *GetCommitDiffTool) Run(ctx tool.Context, args any) (map[string]any, err
 	// Fetch the diff
 	diff, err := git.GetCommitDiff(t.repoPath, commitSHA)
 	if err != nil {
+		slog.Debug("diff fetch error", "sha", shortSHA(commitSHA), "error", err)
 		return map[string]any{
 			"error":      fmt.Sprintf("Error fetching diff: %v", err),
 			"commit_sha": commitSHA,
@@ -111,6 +125,7 @@ func (t *GetCommitDiffTool) Run(ctx tool.Context, args any) (map[string]any, err
 
 	// Check size limit
 	if len(diff) > t.costTracker.GetMaxDiffSizeBytes() {
+		slog.Debug("diff too large", "sha", shortSHA(commitSHA), "size", len(diff), "max", t.costTracker.GetMaxDiffSizeBytes())
 		return map[string]any{
 			"error":      "Diff too large",
 			"commit_sha": commitSHA,
@@ -122,6 +137,9 @@ func (t *GetCommitDiffTool) Run(ctx tool.Context, args any) (map[string]any, err
 
 	// Record the fetch
 	t.costTracker.RecordDiffFetch(commitSHA, len(diff), reason)
+
+	lines := strings.Count(diff, "\n")
+	slog.Debug("diff fetched", "sha", shortSHA(commitSHA), "bytes", len(diff), "lines", lines)
 
 	return map[string]any{
 		"commit_sha": commitSHA,
@@ -201,13 +219,18 @@ func (t *GetFullCommitMessageTool) Run(ctx tool.Context, args any) (map[string]a
 		return map[string]any{"error": "commit_sha must be a string"}, nil
 	}
 
+	slog.Debug("tool call", "tool", "get_full_commit_message", "sha", shortSHA(commitSHA))
+
 	commit, err := git.GetCommitInfo(t.repoPath, commitSHA)
 	if err != nil {
+		slog.Debug("commit info error", "sha", shortSHA(commitSHA), "error", err)
 		return map[string]any{
 			"error":      fmt.Sprintf("Error fetching commit info: %v", err),
 			"commit_sha": commitSHA,
 		}, nil
 	}
+
+	slog.Debug("commit message fetched", "sha", shortSHA(commitSHA), "length", len(commit.Message))
 
 	return map[string]any{
 		"commit_sha":     commitSHA,
@@ -287,8 +310,11 @@ func (t *GetAuthorStatsTool) Run(ctx tool.Context, args any) (map[string]any, er
 		return map[string]any{"error": "author_name must be a string"}, nil
 	}
 
+	slog.Debug("tool call", "tool", "get_author_stats", "author", authorName)
+
 	stats, err := git.GetAuthorStats(t.repoPath, authorName)
 	if err != nil {
+		slog.Debug("author stats error", "author", authorName, "error", err)
 		return map[string]any{
 			"error":       fmt.Sprintf("Error fetching author stats: %v", err),
 			"author_name": authorName,
@@ -296,12 +322,15 @@ func (t *GetAuthorStatsTool) Run(ctx tool.Context, args any) (map[string]any, er
 	}
 
 	if stats.TotalCommits == 0 {
+		slog.Debug("author not found", "author", authorName)
 		return map[string]any{
 			"author_name":   authorName,
 			"total_commits": 0,
 			"message":       "No commits found for this author",
 		}, nil
 	}
+
+	slog.Debug("author stats fetched", "author", stats.Name, "commits", stats.TotalCommits)
 
 	return map[string]any{
 		"author_name":   stats.Name,

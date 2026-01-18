@@ -1,11 +1,16 @@
 package cli
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/perbu/activity/internal/config"
 	"github.com/perbu/activity/internal/git"
+	"github.com/perbu/activity/internal/llm"
 )
 
 // Run executes the repo add command
@@ -14,6 +19,11 @@ func (c *RepoAddCmd) Run(ctx *Context) error {
 	_, err := ctx.DB.GetRepositoryByName(c.Name)
 	if err == nil {
 		return fmt.Errorf("repository '%s' already exists", c.Name)
+	}
+
+	// Validate private flag requires GitHub App configuration
+	if c.Private && ctx.TokenProvider == nil {
+		return fmt.Errorf("--private requires GitHub App configuration (set github.app_id, github.installation_id, and github.private_key_path in config)")
 	}
 
 	// Create local path
@@ -26,11 +36,24 @@ func (c *RepoAddCmd) Run(ctx *Context) error {
 
 	if !ctx.Quiet {
 		fmt.Printf("Cloning %s to %s...\n", c.URL, localPath)
+		if c.Private {
+			fmt.Println("  (using GitHub App authentication)")
+		}
 	}
 
-	// Clone repository
-	if err := git.Clone(c.URL, localPath, c.Branch); err != nil {
-		return fmt.Errorf("failed to clone repository: %w", err)
+	// Clone repository (with auth if private)
+	if c.Private {
+		token, err := ctx.TokenProvider.GetToken()
+		if err != nil {
+			return fmt.Errorf("failed to get GitHub token: %w", err)
+		}
+		if err := git.CloneWithAuth(c.URL, localPath, c.Branch, token); err != nil {
+			return fmt.Errorf("failed to clone repository: %w", err)
+		}
+	} else {
+		if err := git.Clone(c.URL, localPath, c.Branch); err != nil {
+			return fmt.Errorf("failed to clone repository: %w", err)
+		}
 	}
 
 	// Get current SHA
@@ -39,8 +62,25 @@ func (c *RepoAddCmd) Run(ctx *Context) error {
 		return fmt.Errorf("failed to get current SHA: %w", err)
 	}
 
+	// Generate description from README
+	var description sql.NullString
+	if !ctx.Quiet {
+		fmt.Println("Generating description from README...")
+	}
+	desc, err := generateDescription(ctx, localPath)
+	if err != nil {
+		if !ctx.Quiet {
+			fmt.Printf("  Note: Could not generate description: %v\n", err)
+		}
+	} else if desc != "" {
+		description = sql.NullString{String: desc, Valid: true}
+		if !ctx.Quiet && ctx.Verbose {
+			fmt.Printf("  Description: %s\n", desc)
+		}
+	}
+
 	// Create database entry
-	repo, err := ctx.DB.CreateRepository(c.Name, c.URL, c.Branch, localPath)
+	repo, err := ctx.DB.CreateRepository(c.Name, c.URL, c.Branch, localPath, c.Private, description)
 	if err != nil {
 		return fmt.Errorf("failed to create repository: %w", err)
 	}
@@ -52,11 +92,68 @@ func (c *RepoAddCmd) Run(ctx *Context) error {
 			fmt.Printf("  URL: %s\n", c.URL)
 			fmt.Printf("  Branch: %s\n", c.Branch)
 			fmt.Printf("  Path: %s\n", localPath)
+			fmt.Printf("  Private: %v\n", c.Private)
 			fmt.Printf("  Current SHA: %s\n", sha)
+			if repo.Description.Valid {
+				fmt.Printf("  Description: %s\n", repo.Description.String)
+			}
 		}
 	}
 
 	return nil
+}
+
+// generateDescription reads the README and uses LLM to generate a project description
+func generateDescription(ctx *Context, repoPath string) (string, error) {
+	// Try to find README file
+	readmeContent, err := findAndReadREADME(repoPath)
+	if err != nil {
+		return "", err
+	}
+
+	// Truncate if too long (max 4000 chars)
+	if len(readmeContent) > 4000 {
+		readmeContent = readmeContent[:4000]
+	}
+
+	// Create LLM client
+	llmClient, err := llm.NewClient(context.Background(), ctx.Config)
+	if err != nil {
+		return "", fmt.Errorf("failed to initialize LLM: %w", err)
+	}
+	defer llmClient.Close()
+
+	// Generate description using prompt
+	prompt := fmt.Sprintf(config.DefaultDescriptionPrompt, readmeContent)
+	description, err := llmClient.GenerateText(context.Background(), prompt)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate description: %w", err)
+	}
+
+	return strings.TrimSpace(description), nil
+}
+
+// findAndReadREADME looks for README files in the repository and returns the content
+func findAndReadREADME(repoPath string) (string, error) {
+	// Try common README file names
+	readmeNames := []string{
+		"README.md",
+		"README",
+		"readme.md",
+		"readme",
+		"README.txt",
+		"Readme.md",
+	}
+
+	for _, name := range readmeNames {
+		path := filepath.Join(repoPath, name)
+		content, err := os.ReadFile(path)
+		if err == nil {
+			return string(content), nil
+		}
+	}
+
+	return "", fmt.Errorf("no README file found")
 }
 
 // Run executes the repo remove command
@@ -158,6 +255,10 @@ func (c *RepoInfoCmd) Run(ctx *Context) error {
 	fmt.Printf("  Branch: %s\n", repo.Branch)
 	fmt.Printf("  Path: %s\n", repo.LocalPath)
 	fmt.Printf("  Active: %v\n", repo.Active)
+	fmt.Printf("  Private: %v\n", repo.Private)
+	if repo.Description.Valid && repo.Description.String != "" {
+		fmt.Printf("  Description: %s\n", repo.Description.String)
+	}
 	fmt.Printf("  Created: %s\n", repo.CreatedAt.Format("2006-01-02 15:04:05"))
 	fmt.Printf("  Updated: %s\n", repo.UpdatedAt.Format("2006-01-02 15:04:05"))
 	if repo.LastRunAt.Valid {
@@ -201,6 +302,66 @@ func (c *RepoSetURLCmd) Run(ctx *Context) error {
 			fmt.Printf("  Old URL: %s\n", oldURL)
 			fmt.Printf("  New URL: %s\n", c.URL)
 		}
+	}
+
+	return nil
+}
+
+// Run executes the repo describe command
+func (c *RepoDescribeCmd) Run(ctx *Context) error {
+	repo, err := ctx.DB.GetRepositoryByName(c.Name)
+	if err != nil {
+		return fmt.Errorf("repository not found: %s", c.Name)
+	}
+
+	// If --show flag, just display current description
+	if c.Show {
+		if repo.Description.Valid && repo.Description.String != "" {
+			fmt.Printf("Description for '%s':\n%s\n", repo.Name, repo.Description.String)
+		} else {
+			fmt.Printf("Repository '%s' has no description\n", repo.Name)
+		}
+		return nil
+	}
+
+	// If --set flag, use the provided description
+	if c.Set != "" {
+		repo.Description = sql.NullString{String: c.Set, Valid: true}
+		if err := ctx.DB.UpdateRepository(repo); err != nil {
+			return fmt.Errorf("failed to save description: %w", err)
+		}
+
+		if !ctx.Quiet {
+			fmt.Printf("Description set for '%s':\n%s\n", repo.Name, c.Set)
+		}
+		return nil
+	}
+
+	// Generate new description from README
+	if !ctx.Quiet {
+		fmt.Printf("Generating description for '%s'...\n", repo.Name)
+	}
+
+	desc, err := generateDescription(ctx, repo.LocalPath)
+	if err != nil {
+		return fmt.Errorf("failed to generate description: %w", err)
+	}
+
+	if desc == "" {
+		if !ctx.Quiet {
+			fmt.Println("No description could be generated (no README found or empty)")
+		}
+		return nil
+	}
+
+	// Update repository with new description
+	repo.Description = sql.NullString{String: desc, Valid: true}
+	if err := ctx.DB.UpdateRepository(repo); err != nil {
+		return fmt.Errorf("failed to save description: %w", err)
+	}
+
+	if !ctx.Quiet {
+		fmt.Printf("Description updated for '%s':\n%s\n", repo.Name, desc)
 	}
 
 	return nil

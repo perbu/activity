@@ -386,3 +386,70 @@ func GetRemoteURL(repoPath string) (string, error) {
 
 	return strings.TrimSpace(stdout.String()), nil
 }
+
+// CloneWithAuth clones a repository using an authenticated URL
+// The token is injected into the URL for authentication
+func CloneWithAuth(url, path, branch, token string) error {
+	authURL, err := injectToken(url, token)
+	if err != nil {
+		return fmt.Errorf("failed to create authenticated URL: %w", err)
+	}
+
+	cmd := exec.Command("git", "clone", "--branch", branch, authURL, path)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git clone failed: %w: %s", err, stderr.String())
+	}
+
+	// After cloning, set the remote URL to the original (non-authenticated) URL
+	// This prevents the token from being stored in .git/config
+	if err := SetRemoteURL(path, url); err != nil {
+		return fmt.Errorf("failed to reset remote URL: %w", err)
+	}
+
+	return nil
+}
+
+// PullWithAuth pulls a repository using an authenticated URL
+// The token is temporarily injected for the pull operation
+func PullWithAuth(repoPath, url, token string) error {
+	authURL, err := injectToken(url, token)
+	if err != nil {
+		return fmt.Errorf("failed to create authenticated URL: %w", err)
+	}
+
+	// Temporarily set the authenticated URL
+	if err := SetRemoteURL(repoPath, authURL); err != nil {
+		return fmt.Errorf("failed to set authenticated URL: %w", err)
+	}
+
+	// Pull
+	pullErr := Pull(repoPath)
+
+	// Always restore the original URL, even if pull failed
+	restoreErr := SetRemoteURL(repoPath, url)
+
+	if pullErr != nil {
+		return pullErr
+	}
+	if restoreErr != nil {
+		return fmt.Errorf("failed to restore remote URL: %w", restoreErr)
+	}
+
+	return nil
+}
+
+// injectToken inserts an access token into a GitHub URL
+// Input: https://github.com/owner/repo.git
+// Output: https://x-access-token:TOKEN@github.com/owner/repo.git
+func injectToken(originalURL, token string) (string, error) {
+	// Simple string manipulation for HTTPS URLs
+	if !strings.HasPrefix(originalURL, "https://") {
+		return "", fmt.Errorf("token injection only supported for HTTPS URLs")
+	}
+
+	// Insert x-access-token:TOKEN@ after https://
+	return "https://x-access-token:" + token + "@" + strings.TrimPrefix(originalURL, "https://"), nil
+}

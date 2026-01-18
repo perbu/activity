@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/alecthomas/kong"
@@ -9,9 +10,23 @@ import (
 	"github.com/perbu/activity/internal/cli"
 	"github.com/perbu/activity/internal/config"
 	"github.com/perbu/activity/internal/db"
+	"github.com/perbu/activity/internal/github"
 )
 
 var version = "dev"
+
+// setupLogger configures the global slog logger based on debug setting
+func setupLogger(debug bool) {
+	level := slog.LevelInfo
+	if debug {
+		level = slog.LevelDebug
+	}
+
+	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: level,
+	})
+	slog.SetDefault(slog.New(handler))
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -45,6 +60,14 @@ func run() error {
 		cfg.DataDir = cliArgs.DataDir
 	}
 
+	// Override debug if specified via CLI flag
+	if cliArgs.Debug {
+		cfg.Debug = true
+	}
+
+	// Set up slog based on debug setting
+	setupLogger(cfg.Debug)
+
 	// Require data directory to be specified
 	if cfg.DataDir == "" {
 		return fmt.Errorf("data directory must be specified via --data-dir flag or config file")
@@ -62,12 +85,26 @@ func run() error {
 	}
 	defer database.Close()
 
+	// Initialize GitHub App token provider if configured
+	var tokenProvider *github.TokenProvider
+	if cfg.HasGitHubApp() {
+		privateKey, err := cfg.GetGitHubPrivateKey()
+		if err != nil {
+			return fmt.Errorf("failed to get GitHub App private key: %w", err)
+		}
+		tokenProvider, err = github.NewTokenProvider(cfg.GitHub.AppID, cfg.GitHub.InstallationID, privateKey)
+		if err != nil {
+			return fmt.Errorf("failed to create GitHub token provider: %w", err)
+		}
+	}
+
 	// Create context
 	appCtx := &cli.Context{
-		DB:      database,
-		Config:  cfg,
-		Verbose: cliArgs.Verbose,
-		Quiet:   cliArgs.Quiet,
+		DB:            database,
+		Config:        cfg,
+		TokenProvider: tokenProvider,
+		Verbose:       cliArgs.Verbose,
+		Quiet:         cliArgs.Quiet,
 	}
 
 	// Run the selected command

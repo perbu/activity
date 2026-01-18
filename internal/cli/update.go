@@ -70,9 +70,22 @@ func updateRepository(ctx *Context, name string, analyze bool) error {
 		return fmt.Errorf("failed to get current SHA: %w", err)
 	}
 
-	// Pull updates
-	if err := git.Pull(repo.LocalPath); err != nil {
-		return fmt.Errorf("failed to pull: %w", err)
+	// Pull updates (with auth if private)
+	if repo.Private {
+		if ctx.TokenProvider == nil {
+			return fmt.Errorf("repository '%s' is private but no GitHub App is configured", name)
+		}
+		token, err := ctx.TokenProvider.GetToken()
+		if err != nil {
+			return fmt.Errorf("failed to get GitHub token: %w", err)
+		}
+		if err := git.PullWithAuth(repo.LocalPath, repo.URL, token); err != nil {
+			return fmt.Errorf("failed to pull: %w", err)
+		}
+	} else {
+		if err := git.Pull(repo.LocalPath); err != nil {
+			return fmt.Errorf("failed to pull: %w", err)
+		}
 	}
 
 	// Get SHA after pull

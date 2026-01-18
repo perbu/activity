@@ -166,6 +166,20 @@ func (db *DB) migrate() error {
 				CREATE INDEX idx_weekly_reports_year_week ON weekly_reports(year, week);
 			`,
 		},
+		{
+			version: 5,
+			sql: `
+				-- Private repository support: flag for GitHub App authentication
+				ALTER TABLE repositories ADD COLUMN private BOOLEAN NOT NULL DEFAULT 0;
+			`,
+		},
+		{
+			version: 6,
+			sql: `
+				-- Repository description: AI-generated summary from README
+				ALTER TABLE repositories ADD COLUMN description TEXT;
+			`,
+		},
 	}
 
 	// Apply pending migrations

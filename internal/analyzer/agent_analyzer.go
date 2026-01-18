@@ -3,7 +3,7 @@ package analyzer
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/perbu/activity/internal/db"
@@ -16,12 +16,14 @@ import (
 	"google.golang.org/genai"
 )
 
-
 // buildAgentPrompt creates the user prompt for the agent
 func buildAgentPrompt(repo *db.Repository, commits []git.Commit, maxMessageLength int) string {
 	var sb strings.Builder
 
 	sb.WriteString(fmt.Sprintf("Repository: %s\n", repo.Name))
+	if repo.Description.Valid && repo.Description.String != "" {
+		sb.WriteString(fmt.Sprintf("About: %s\n", repo.Description.String))
+	}
 	sb.WriteString(fmt.Sprintf("Branch: %s\n", repo.Branch))
 	sb.WriteString(fmt.Sprintf("Analyzing %d commits\n\n", len(commits)))
 	sb.WriteString("Commits (newest first):\n\n")
@@ -96,9 +98,7 @@ func (a *Analyzer) analyzeWithAgent(ctx context.Context, repo *db.Repository, co
 	// Build user prompt
 	userPrompt := buildAgentPrompt(repo, commits, a.config.LLM.MaxMessageLength)
 
-	if a.config.LLM.EnableToolLogs {
-		log.Printf("[AGENT] Starting analysis of %d commits for repo %s", len(commits), repo.Name)
-	}
+	slog.Debug("agent starting analysis", "repo", repo.Name, "commits", len(commits))
 
 	// Create a runner with in-memory session
 	sessionService := session.InMemoryService()
@@ -140,10 +140,8 @@ func (a *Analyzer) analyzeWithAgent(ctx context.Context, repo *db.Repository, co
 		}
 	}
 
-	if a.config.LLM.EnableToolLogs {
-		log.Printf("[AGENT] Analysis complete. Fetched %d diffs, used ~%d tokens",
-			costTracker.GetDiffsFetched(), costTracker.GetEstimatedTokens())
-	}
+	slog.Debug("agent analysis complete", "diffs_fetched", costTracker.GetDiffsFetched(), "tokens", costTracker.GetEstimatedTokens())
+	slog.Info("analysis complete", "repo", repo.Name, "commits", len(commits), "diffs", costTracker.GetDiffsFetched())
 
 	return summary.String(), costTracker, nil
 }

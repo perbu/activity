@@ -9,11 +9,11 @@ import (
 // Repository CRUD operations
 
 // CreateRepository inserts a new repository into the database
-func (db *DB) CreateRepository(name, url, branch, localPath string) (*Repository, error) {
+func (db *DB) CreateRepository(name, url, branch, localPath string, private bool, description sql.NullString) (*Repository, error) {
 	result, err := db.Exec(`
-		INSERT INTO repositories (name, url, branch, local_path, active)
-		VALUES (?, ?, ?, ?, 1)
-	`, name, url, branch, localPath)
+		INSERT INTO repositories (name, url, branch, local_path, active, private, description)
+		VALUES (?, ?, ?, ?, 1, ?, ?)
+	`, name, url, branch, localPath, private, description)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repository: %w", err)
 	}
@@ -30,12 +30,12 @@ func (db *DB) CreateRepository(name, url, branch, localPath string) (*Repository
 func (db *DB) GetRepository(id int64) (*Repository, error) {
 	repo := &Repository{}
 	err := db.QueryRow(`
-		SELECT id, name, url, branch, local_path, active, created_at, updated_at, last_run_at, last_run_sha
+		SELECT id, name, url, branch, local_path, active, COALESCE(private, 0), description, created_at, updated_at, last_run_at, last_run_sha
 		FROM repositories
 		WHERE id = ?
 	`, id).Scan(
 		&repo.ID, &repo.Name, &repo.URL, &repo.Branch, &repo.LocalPath,
-		&repo.Active, &repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
+		&repo.Active, &repo.Private, &repo.Description, &repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -50,12 +50,12 @@ func (db *DB) GetRepository(id int64) (*Repository, error) {
 func (db *DB) GetRepositoryByName(name string) (*Repository, error) {
 	repo := &Repository{}
 	err := db.QueryRow(`
-		SELECT id, name, url, branch, local_path, active, created_at, updated_at, last_run_at, last_run_sha
+		SELECT id, name, url, branch, local_path, active, COALESCE(private, 0), description, created_at, updated_at, last_run_at, last_run_sha
 		FROM repositories
 		WHERE name = ?
 	`, name).Scan(
 		&repo.ID, &repo.Name, &repo.URL, &repo.Branch, &repo.LocalPath,
-		&repo.Active, &repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
+		&repo.Active, &repo.Private, &repo.Description, &repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -69,7 +69,7 @@ func (db *DB) GetRepositoryByName(name string) (*Repository, error) {
 // ListRepositories retrieves all repositories, optionally filtered by active status
 func (db *DB) ListRepositories(activeOnly *bool) ([]*Repository, error) {
 	query := `
-		SELECT id, name, url, branch, local_path, active, created_at, updated_at, last_run_at, last_run_sha
+		SELECT id, name, url, branch, local_path, active, COALESCE(private, 0), description, created_at, updated_at, last_run_at, last_run_sha
 		FROM repositories
 	`
 	var args []interface{}
@@ -92,7 +92,7 @@ func (db *DB) ListRepositories(activeOnly *bool) ([]*Repository, error) {
 		repo := &Repository{}
 		err := rows.Scan(
 			&repo.ID, &repo.Name, &repo.URL, &repo.Branch, &repo.LocalPath,
-			&repo.Active, &repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
+			&repo.Active, &repo.Private, &repo.Description, &repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan repository: %w", err)
@@ -108,9 +108,9 @@ func (db *DB) UpdateRepository(repo *Repository) error {
 	repo.UpdatedAt = time.Now()
 	_, err := db.Exec(`
 		UPDATE repositories
-		SET name = ?, url = ?, branch = ?, local_path = ?, active = ?, updated_at = ?, last_run_at = ?, last_run_sha = ?
+		SET name = ?, url = ?, branch = ?, local_path = ?, active = ?, private = ?, description = ?, updated_at = ?, last_run_at = ?, last_run_sha = ?
 		WHERE id = ?
-	`, repo.Name, repo.URL, repo.Branch, repo.LocalPath, repo.Active, repo.UpdatedAt, repo.LastRunAt, repo.LastRunSHA, repo.ID)
+	`, repo.Name, repo.URL, repo.Branch, repo.LocalPath, repo.Active, repo.Private, repo.Description, repo.UpdatedAt, repo.LastRunAt, repo.LastRunSHA, repo.ID)
 	if err != nil {
 		return fmt.Errorf("failed to update repository: %w", err)
 	}
@@ -551,7 +551,7 @@ func (db *DB) GetReposForSubscriber(subscriberID int64) ([]*Repository, error) {
 
 	// Return only subscribed repos
 	rows, err := db.Query(`
-		SELECT r.id, r.name, r.url, r.branch, r.local_path, r.active, r.created_at, r.updated_at, r.last_run_at, r.last_run_sha
+		SELECT r.id, r.name, r.url, r.branch, r.local_path, r.active, COALESCE(r.private, 0), r.description, r.created_at, r.updated_at, r.last_run_at, r.last_run_sha
 		FROM repositories r
 		INNER JOIN subscriptions s ON r.id = s.repo_id
 		WHERE s.subscriber_id = ?
@@ -567,7 +567,7 @@ func (db *DB) GetReposForSubscriber(subscriberID int64) ([]*Repository, error) {
 		repo := &Repository{}
 		if err := rows.Scan(
 			&repo.ID, &repo.Name, &repo.URL, &repo.Branch, &repo.LocalPath,
-			&repo.Active, &repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
+			&repo.Active, &repo.Private, &repo.Description, &repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan repository: %w", err)
 		}

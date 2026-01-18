@@ -11,8 +11,18 @@ import (
 // Config represents the application configuration
 type Config struct {
 	DataDir    string           `yaml:"data_dir"`
+	Debug      bool             `yaml:"debug"` // Enable debug logging
 	LLM        LLMConfig        `yaml:"llm"`
 	Newsletter NewsletterConfig `yaml:"newsletter"`
+	GitHub     GitHubConfig     `yaml:"github"`
+}
+
+// GitHubConfig represents GitHub App authentication configuration
+type GitHubConfig struct {
+	AppID          int64  `yaml:"app_id"`
+	InstallationID int64  `yaml:"installation_id"`
+	PrivateKeyPath string `yaml:"private_key_path"` // Path to PEM file
+	PrivateKeyEnv  string `yaml:"private_key_env"`  // Env var with PEM content
 }
 
 // NewsletterConfig represents newsletter email configuration
@@ -177,6 +187,34 @@ func (c *Config) GetSendGridAPIKey() string {
 	return ""
 }
 
+// HasGitHubApp returns true if GitHub App authentication is configured
+func (c *Config) HasGitHubApp() bool {
+	return c.GitHub.AppID != 0 && c.GitHub.InstallationID != 0
+}
+
+// GetGitHubPrivateKey returns the GitHub App private key, checking file path first then env var
+func (c *Config) GetGitHubPrivateKey() ([]byte, error) {
+	// Check file path first
+	if c.GitHub.PrivateKeyPath != "" {
+		path := expandPath(c.GitHub.PrivateKeyPath)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read private key file: %w", err)
+		}
+		return data, nil
+	}
+
+	// Check environment variable
+	if c.GitHub.PrivateKeyEnv != "" {
+		key := os.Getenv(c.GitHub.PrivateKeyEnv)
+		if key != "" {
+			return []byte(key), nil
+		}
+	}
+
+	return nil, fmt.Errorf("no GitHub App private key configured")
+}
+
 // DefaultAgentSystemPrompt is the default system instruction for Phase 3 agent
 const DefaultAgentSystemPrompt = `You are a Git commit analyzer that summarizes development activity.
 
@@ -210,3 +248,22 @@ Provide a summary with these sections:
 
 Keep the summary under 400 words and use clear, professional language.
 If you had to skip analyzing some commits due to limits, mention this briefly at the end.`
+
+// DefaultDescriptionPrompt is the prompt used to generate repository descriptions from README files
+const DefaultDescriptionPrompt = `Summarize this software project in 2-3 sentences for someone who will be reading commit summaries. Focus on:
+- What the project IS (tool, library, service, etc.)
+- What problem it solves or what it's used for
+- Key technical domain (if relevant)
+
+Do NOT include:
+- Installation instructions
+- File structure details
+- Version numbers
+- Contributor information
+
+README content:
+---
+%s
+---
+
+Provide only the summary, no preamble.`

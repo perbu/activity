@@ -127,6 +127,9 @@ func buildAnalysisPrompt(repo *db.Repository, commits []git.Commit, cfg *config.
 
 	sb.WriteString("You are analyzing git commits for a software project.\n\n")
 	sb.WriteString(fmt.Sprintf("Repository: %s\n", repo.Name))
+	if repo.Description.Valid && repo.Description.String != "" {
+		sb.WriteString(fmt.Sprintf("About: %s\n", repo.Description.String))
+	}
 	sb.WriteString(fmt.Sprintf("Branch: %s\n", repo.Branch))
 	sb.WriteString(fmt.Sprintf("Total commits: %d\n\n", len(commits)))
 

@@ -4,10 +4,11 @@ import "github.com/alecthomas/kong"
 
 // CLI is the root command structure for kong
 type CLI struct {
-	Config  string `short:"c" help:"Config file path" type:"path"`
-	DataDir string `short:"d" name:"data-dir" help:"Data directory" type:"path"`
-	Verbose bool   `short:"v" help:"Verbose output"`
-	Quiet   bool   `short:"q" help:"Minimal output"`
+	Config  string           `short:"c" help:"Config file path" type:"path"`
+	DataDir string           `short:"d" name:"data-dir" help:"Data directory" type:"path"`
+	Verbose bool             `short:"v" help:"Verbose output"`
+	Quiet   bool             `short:"q" help:"Minimal output"`
+	Debug   bool             `help:"Enable debug logging"`
 	Version kong.VersionFlag `short:"V" help:"Show version"`
 
 	List        ListCmd        `cmd:"" help:"List tracked repositories"`
@@ -63,13 +64,15 @@ type RepoCmd struct {
 	Info       RepoInfoCmd       `cmd:"" help:"Show repository info"`
 	List       RepoListCmd       `cmd:"" help:"List repositories"`
 	SetURL     RepoSetURLCmd     `cmd:"" name:"set-url" help:"Update repository URL (when remote moves)"`
+	Describe   RepoDescribeCmd   `cmd:"" help:"Generate or show repository description"`
 }
 
 // RepoAddCmd adds a new repository
 type RepoAddCmd struct {
-	Name   string `arg:"" help:"Repository name"`
-	URL    string `arg:"" help:"Repository URL"`
-	Branch string `help:"Branch to track" default:"main"`
+	Name    string `arg:"" help:"Repository name"`
+	URL     string `arg:"" help:"Repository URL"`
+	Branch  string `help:"Branch to track" default:"main"`
+	Private bool   `help:"Repository requires GitHub App authentication"`
 }
 
 // RepoRemoveCmd removes a repository
@@ -97,6 +100,13 @@ type RepoInfoCmd struct {
 type RepoSetURLCmd struct {
 	Name string `arg:"" help:"Repository name"`
 	URL  string `arg:"" help:"New repository URL"`
+}
+
+// RepoDescribeCmd generates or shows a repository description
+type RepoDescribeCmd struct {
+	Name string `arg:"" help:"Repository name"`
+	Show bool   `help:"Only show current description, don't regenerate"`
+	Set  string `help:"Manually set the description to this value"`
 }
 
 // RepoListCmd lists repositories (alias for list command)
@@ -137,10 +147,10 @@ type ReportListCmd struct {
 
 // NewsletterCmd is the parent command for newsletter management
 type NewsletterCmd struct {
-	Subscriber  SubscriberCmd           `cmd:"" help:"Manage subscribers"`
-	Subscribe   NewsletterSubscribeCmd  `cmd:"" help:"Subscribe to a repository"`
+	Subscriber  SubscriberCmd            `cmd:"" help:"Manage subscribers"`
+	Subscribe   NewsletterSubscribeCmd   `cmd:"" help:"Subscribe to a repository"`
 	Unsubscribe NewsletterUnsubscribeCmd `cmd:"" help:"Unsubscribe from a repository"`
-	Send        NewsletterSendCmd       `cmd:"" help:"Send newsletters"`
+	Send        NewsletterSendCmd        `cmd:"" help:"Send newsletters"`
 }
 
 // SubscriberCmd is the parent command for subscriber management

@@ -7,16 +7,18 @@ import (
 
 // Repository represents a Git repository being tracked
 type Repository struct {
-	ID         int64
-	Name       string
-	URL        string
-	Branch     string
-	LocalPath  string
-	Active     bool
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	LastRunAt  sql.NullTime
-	LastRunSHA sql.NullString
+	ID          int64
+	Name        string
+	URL         string
+	Branch      string
+	LocalPath   string
+	Active      bool
+	Private     bool           // Requires GitHub App authentication
+	Description sql.NullString // AI-generated description from README
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	LastRunAt   sql.NullTime
+	LastRunSHA  sql.NullString
 }
 
 // ActivityRun represents a single analysis run on a repository
