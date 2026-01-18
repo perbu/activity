@@ -62,7 +62,7 @@ func outputTable(ctx *Context, repos []*db.Repository) error {
 	defer w.Flush()
 
 	// Print header
-	fmt.Fprintln(w, "NAME\tSTATUS\tBRANCH\tLAST RUN\tURL")
+	fmt.Fprintln(w, "NAME\tSTATUS\tBRANCH\tLAST RUN\tDESCRIPTION\tURL")
 
 	// Print rows
 	for _, repo := range repos {
@@ -84,16 +84,31 @@ func outputTable(ctx *Context, repos []*db.Repository) error {
 			}
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+		desc := truncateDescription(repo.Description.String, 20)
+
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 			repo.Name,
 			status,
 			repo.Branch,
 			lastRun,
+			desc,
 			repo.URL,
 		)
 	}
 
 	return nil
+}
+
+// truncateDescription returns a truncated description with character count
+func truncateDescription(desc string, maxLen int) string {
+	if desc == "" {
+		return "-"
+	}
+	totalLen := len(desc)
+	if totalLen <= maxLen {
+		return desc
+	}
+	return fmt.Sprintf("%s... (%d ch)", desc[:maxLen], totalLen)
 }
 
 // outputJSON outputs repositories as JSON

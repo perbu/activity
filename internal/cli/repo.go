@@ -142,6 +142,7 @@ func findAndReadREADME(repoPath string) (string, error) {
 		"readme.md",
 		"readme",
 		"README.txt",
+		"README.rst",
 		"Readme.md",
 	}
 
