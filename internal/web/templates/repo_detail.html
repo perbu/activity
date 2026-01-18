@@ -1,0 +1,64 @@
+{{define "content"}}
+{{with .Content}}
+<div class="breadcrumb">
+    <a href="/repos">repos</a>
+    <span class="breadcrumb-sep">/</span>
+    <span>{{.Repo.Name}}</span>
+</div>
+
+<div class="page-header">
+    <div style="display: flex; align-items: center; gap: 12px;">
+        <h1 class="page-title">{{.Repo.Name}}</h1>
+        {{if .Repo.Active}}
+        <span class="badge badge-active">active</span>
+        {{else}}
+        <span class="badge badge-inactive">inactive</span>
+        {{end}}
+    </div>
+    <p class="page-subtitle">{{.Repo.URL}}</p>
+</div>
+
+{{if .Years}}
+<div class="filter-bar">
+    <span class="filter-label">filter by year:</span>
+    <a href="?year=" class="filter-pill {{if eq .CurrentYear 0}}active{{end}}">all</a>
+    {{range .Years}}
+    <a href="?year={{.}}" class="filter-pill {{if eq . $.Content.CurrentYear}}active{{end}}">{{.}}</a>
+    {{end}}
+</div>
+{{end}}
+
+{{if .Reports}}
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Week</th>
+                <th>Period</th>
+                <th>Commits</th>
+                <th>Generated</th>
+                <th>Preview</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Reports}}
+            <tr>
+                <td><a href="/reports/{{.ID}}" class="cell-primary">{{.WeekLabel}}</a></td>
+                <td class="cell-secondary">{{.WeekStart}} - {{.WeekEnd}}</td>
+                <td class="cell-secondary"><span class="commit-count">{{.CommitCount}}</span></td>
+                <td class="cell-muted">{{.CreatedAt}}</td>
+                <td class="cell-muted cell-truncate">{{.Preview}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+{{else}}
+<div class="empty-state">
+    <div class="empty-state-icon">[ ]</div>
+    <div class="empty-state-title">No reports for this repository</div>
+    <div class="empty-state-desc">Run 'activity report generate {{.Repo.Name}}' to create reports</div>
+</div>
+{{end}}
+{{end}}
+{{end}}

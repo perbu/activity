@@ -1,0 +1,66 @@
+{{define "content"}}
+{{with .Content}}
+<div class="breadcrumb">
+    <a href="/repos">repos</a>
+    <span class="breadcrumb-sep">/</span>
+    <a href="/repos/{{.Report.RepoName}}">{{.Report.RepoName}}</a>
+    <span class="breadcrumb-sep">/</span>
+    <span>{{.Report.WeekLabel}}</span>
+</div>
+
+<div class="page-header">
+    <h1 class="page-title">{{.Report.WeekLabel}}</h1>
+    <p class="page-subtitle">weekly report for {{.Report.RepoName}}</p>
+</div>
+
+<div class="report-layout">
+    <aside class="report-sidebar">
+        <div class="card">
+            <dl class="report-meta">
+                <dt>Repository</dt>
+                <dd><a href="/repos/{{.Report.RepoName}}">{{.Report.RepoName}}</a></dd>
+
+                <dt>Week</dt>
+                <dd>{{.Report.WeekLabel}}</dd>
+
+                <dt>Period</dt>
+                <dd>{{.Report.WeekStart}} - {{.Report.WeekEnd}}</dd>
+
+                <dt>Commits</dt>
+                <dd><span class="commit-count">{{.Report.CommitCount}}</span></dd>
+
+                {{if .Report.Authors}}
+                <dt>Authors</dt>
+                <dd>{{range $i, $a := .Report.Authors}}{{if $i}}, {{end}}{{$a}}{{end}}</dd>
+                {{end}}
+
+                <dt>Analysis</dt>
+                <dd>
+                    {{if .Report.AgentMode}}
+                    <span class="badge badge-agent">agent</span>
+                    {{else}}
+                    <span class="badge badge-inactive">simple</span>
+                    {{end}}
+                </dd>
+
+                <dt>Generated</dt>
+                <dd>{{.Report.CreatedAt}}</dd>
+            </dl>
+        </div>
+    </aside>
+
+    <article class="card">
+        {{if .Report.SummaryHTML}}
+        <div class="prose">
+            {{.Report.SummaryHTML}}
+        </div>
+        {{else}}
+        <div class="empty-state" style="border: none; padding: 32px;">
+            <div class="empty-state-title">No summary available</div>
+            <div class="empty-state-desc">This report has no generated summary</div>
+        </div>
+        {{end}}
+    </article>
+</div>
+{{end}}
+{{end}}

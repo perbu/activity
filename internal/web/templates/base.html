@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} // activity</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <nav class="nav">
+        <div class="nav-inner">
+            <a href="/" class="nav-brand">activity</a>
+            <div class="nav-links">
+                <a href="/" class="nav-link {{if eq .ActiveNav "dashboard"}}active{{end}}">dashboard</a>
+                <a href="/repos" class="nav-link {{if eq .ActiveNav "repos"}}active{{end}}">repos</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main">
+        {{if .Error}}
+        <div class="error-banner">
+            {{.Error}}
+        </div>
+        {{end}}
+        {{template "content" .}}
+    </main>
+
+    <footer class="footer">
+        <div class="footer-inner">
+            activity // git repository change analyzer
+        </div>
+    </footer>
+</body>
+</html>

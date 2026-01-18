@@ -2,7 +2,7 @@ package web
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/perbu/activity/internal/db"
@@ -39,6 +39,9 @@ func NewServer(database *db.DB, host string, port int) (*Server, error) {
 
 // registerRoutes registers all HTTP routes
 func (s *Server) registerRoutes() {
+	// Serve static files from embedded filesystem
+	s.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(StaticFS()))))
+
 	s.mux.HandleFunc("GET /", s.handleIndex)
 	s.mux.HandleFunc("GET /repos", s.handleRepoList)
 	s.mux.HandleFunc("GET /repos/{name}", s.handleRepoReports)
@@ -48,7 +51,7 @@ func (s *Server) registerRoutes() {
 // Start starts the HTTP server
 func (s *Server) Start() error {
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
-	log.Printf("Starting web server at http://%s", addr)
+	slog.Info("starting web server", "address", "http://"+addr)
 	return http.ListenAndServe(addr, s.mux)
 }
 

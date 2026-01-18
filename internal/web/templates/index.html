@@ -1,0 +1,41 @@
+{{define "content"}}
+<div class="page-header">
+    <h1 class="page-title">Recent Reports</h1>
+    <p class="page-subtitle">latest weekly activity summaries across all repositories</p>
+</div>
+
+{{with .Content}}
+{{if .Reports}}
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Repository</th>
+                <th>Week</th>
+                <th>Period</th>
+                <th>Commits</th>
+                <th>Preview</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Reports}}
+            <tr>
+                <td><a href="/repos/{{.RepoName}}" class="cell-primary">{{.RepoName}}</a></td>
+                <td><a href="/reports/{{.ID}}">{{.WeekLabel}}</a></td>
+                <td class="cell-secondary">{{.WeekStart}} - {{.WeekEnd}}</td>
+                <td class="cell-secondary"><span class="commit-count">{{.CommitCount}}</span></td>
+                <td class="cell-muted cell-truncate">{{.Preview}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+{{else}}
+<div class="empty-state">
+    <div class="empty-state-icon">[ ]</div>
+    <div class="empty-state-title">No reports generated</div>
+    <div class="empty-state-desc">Run 'activity report generate' to create weekly reports</div>
+</div>
+{{end}}
+{{end}}
+{{end}}
