@@ -57,7 +57,7 @@ func ShowPrompts(ctx *Context, args []string) error {
 	}
 	fmt.Println()
 	// Note about the %d placeholder
-	fmt.Println("  Note: The '%d' placeholder is replaced with max_diff_fetches at runtime")
+	fmt.Printf("  Note: The '%%d' placeholder is replaced with max_diff_fetches at runtime\n")
 	fmt.Println()
 	fmt.Println(indentText(agentPrompt, "  "))
 	fmt.Println()

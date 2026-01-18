@@ -117,8 +117,8 @@ func run() error {
 	switch subcommand {
 	case "list":
 		return cli.List(ctx, args)
-	case "show":
-		return cli.Show(ctx, args)
+	case "analyze":
+		return cli.Analyze(ctx, args)
 	case "update":
 		return cli.Update(ctx, args)
 	case "repo":
@@ -152,7 +152,7 @@ Global Flags:
 
 Commands:
   list                List all repositories
-  show [repo...]      Show activity for repositories
+  analyze [repo...]   Analyze repository activity (requires --since, --until, or -n)
   update [repo...]    Update repositories (git pull)
   repo <subcommand>   Manage repositories
   show-prompts        Display current analysis prompts
@@ -173,8 +173,8 @@ Examples:
   activity repo add myproject https://github.com/user/repo
   activity list
   activity update myproject
-  activity show myproject
+  activity analyze myproject --since '1 week ago'
+  activity analyze myproject -n 5
 
-For more information, visit: https://github.com/perbu/activity
-`)
+For more information, visit: https://github.com/perbu/activity`)
 }

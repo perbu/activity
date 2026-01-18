@@ -48,7 +48,7 @@ func repoAdd(ctx *Context, args []string) error {
 	}
 
 	if flags.NArg() != 2 {
-		fmt.Fprintf(os.Stderr, "Usage: activity repo add <name> <url> [--branch=main]\n")
+		fmt.Fprintf(os.Stderr, "Usage: activity repo add [--branch=main] <name> <url>\n")
 		return fmt.Errorf("requires exactly 2 arguments: name and url")
 	}
 
@@ -113,7 +113,7 @@ func repoRemove(ctx *Context, args []string) error {
 	}
 
 	if flags.NArg() != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: activity repo remove <name> [--keep-files]\n")
+		fmt.Fprintf(os.Stderr, "Usage: activity repo remove [--keep-files] <name>\n")
 		return fmt.Errorf("requires exactly 1 argument: name")
 	}
 
@@ -256,9 +256,9 @@ Usage:
   activity repo <subcommand> [flags] [arguments]
 
 Subcommands:
-  add <name> <url> [--branch=main]
+  add [--branch=main] <name> <url>
                       Add a repository
-  remove <name> [--keep-files]
+  remove [--keep-files] <name>
                       Remove a repository
   activate <name>     Activate a repository
   deactivate <name>   Deactivate a repository
@@ -267,10 +267,9 @@ Subcommands:
 
 Examples:
   activity repo add myproject https://github.com/user/repo
-  activity repo add myproject https://github.com/user/repo --branch=develop
+  activity repo add --branch=develop myproject https://github.com/user/repo
   activity repo remove myproject
-  activity repo remove myproject --keep-files
+  activity repo remove --keep-files myproject
   activity repo info myproject
-  activity repo list
-`)
+  activity repo list`)
 }

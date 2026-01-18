@@ -125,6 +125,78 @@ func GetCommitDiff(repoPath, sha string) (string, error) {
 	return stdout.String(), nil
 }
 
+// GetCommitsSince retrieves commits since a date (optionally until a date)
+// Uses git's native --since and --until flags which handle date parsing
+// (relative dates like "1 week ago" work automatically)
+func GetCommitsSince(repoPath, since, until string) ([]Commit, error) {
+	format := "%H%x1e%an%x1e%at%x1e%s"
+
+	args := []string{"-C", repoPath, "log", "--format=" + format}
+	if since != "" {
+		args = append(args, "--since="+since)
+	}
+	if until != "" {
+		args = append(args, "--until="+until)
+	}
+
+	cmd := exec.Command("git", args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("git log failed: %w: %s", err, stderr.String())
+	}
+
+	return parseCommitOutput(stdout.String())
+}
+
+// GetLastNCommits retrieves the last N commits from a repository
+func GetLastNCommits(repoPath string, n int) ([]Commit, error) {
+	format := "%H%x1e%an%x1e%at%x1e%s"
+
+	cmd := exec.Command("git", "-C", repoPath, "log", "--format="+format, fmt.Sprintf("-n%d", n))
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("git log failed: %w: %s", err, stderr.String())
+	}
+
+	return parseCommitOutput(stdout.String())
+}
+
+// parseCommitOutput parses git log output with record separator format
+func parseCommitOutput(output string) ([]Commit, error) {
+	output = strings.TrimSpace(output)
+	if output == "" {
+		return []Commit{}, nil
+	}
+
+	lines := strings.Split(output, "\n")
+	commits := make([]Commit, 0, len(lines))
+
+	for _, line := range lines {
+		parts := strings.Split(line, "\x1e")
+		if len(parts) != 4 {
+			continue
+		}
+
+		var timestamp int64
+		fmt.Sscanf(parts[2], "%d", &timestamp)
+
+		commits = append(commits, Commit{
+			SHA:     parts[0],
+			Author:  parts[1],
+			Date:    time.Unix(timestamp, 0),
+			Message: parts[3],
+		})
+	}
+
+	return commits, nil
+}
+
 // GetCommitInfo retrieves detailed information about a commit
 func GetCommitInfo(repoPath, sha string) (*Commit, error) {
 	format := "%H%x1e%an%x1e%at%x1e%B"

@@ -6,9 +6,9 @@ This tool analyzes git commit history using AI to generate human-readable activi
 
 ## Code Overview (~2000 LOC)
 
-### `cmd/activity`
+### `main.go`
 
-Main entry point. Defines CLI structure using flag-based subcommands (init, add, update, show, list). Wires together configuration, database, git operations, LLM client, and analyzer components. Handles initialization of the data directory and database schema.
+Main entry point at the root for simple `go install`. Defines CLI structure using flag-based subcommands (init, add, update, show, list). Wires together configuration, database, git operations, LLM client, and analyzer components. Handles initialization of the data directory and database schema.
 
 ### `internal/config`
 
