@@ -62,6 +62,7 @@ type RepoCmd struct {
 	Deactivate RepoDeactivateCmd `cmd:"" help:"Deactivate a repository"`
 	Info       RepoInfoCmd       `cmd:"" help:"Show repository info"`
 	List       RepoListCmd       `cmd:"" help:"List repositories"`
+	SetURL     RepoSetURLCmd     `cmd:"" name:"set-url" help:"Update repository URL (when remote moves)"`
 }
 
 // RepoAddCmd adds a new repository
@@ -90,6 +91,12 @@ type RepoDeactivateCmd struct {
 // RepoInfoCmd shows repository details
 type RepoInfoCmd struct {
 	Name string `arg:"" help:"Repository name"`
+}
+
+// RepoSetURLCmd updates the URL for a repository
+type RepoSetURLCmd struct {
+	Name string `arg:"" help:"Repository name"`
+	URL  string `arg:"" help:"New repository URL"`
 }
 
 // RepoListCmd lists repositories (alias for list command)

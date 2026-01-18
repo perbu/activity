@@ -359,3 +359,30 @@ func WeeksInRange(start, end time.Time) [][2]int {
 func CurrentISOWeek() (year, week int) {
 	return time.Now().ISOWeek()
 }
+
+// SetRemoteURL updates the origin remote URL for a repository
+func SetRemoteURL(repoPath, newURL string) error {
+	cmd := exec.Command("git", "-C", repoPath, "remote", "set-url", "origin", newURL)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git remote set-url failed: %w: %s", err, stderr.String())
+	}
+
+	return nil
+}
+
+// GetRemoteURL returns the current origin remote URL for a repository
+func GetRemoteURL(repoPath string) (string, error) {
+	cmd := exec.Command("git", "-C", repoPath, "remote", "get-url", "origin")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("git remote get-url failed: %w: %s", err, stderr.String())
+	}
+
+	return strings.TrimSpace(stdout.String()), nil
+}

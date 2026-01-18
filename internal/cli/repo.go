@@ -172,3 +172,36 @@ func (c *RepoInfoCmd) Run(ctx *Context) error {
 
 	return nil
 }
+
+// Run executes the repo set-url command
+func (c *RepoSetURLCmd) Run(ctx *Context) error {
+	repo, err := ctx.DB.GetRepositoryByName(c.Name)
+	if err != nil {
+		return fmt.Errorf("repository not found: %s", c.Name)
+	}
+
+	oldURL := repo.URL
+
+	// Update git remote
+	if err := git.SetRemoteURL(repo.LocalPath, c.URL); err != nil {
+		return fmt.Errorf("failed to update git remote: %w", err)
+	}
+
+	// Update database
+	repo.URL = c.URL
+	if err := ctx.DB.UpdateRepository(repo); err != nil {
+		// Try to rollback git remote on DB failure
+		_ = git.SetRemoteURL(repo.LocalPath, oldURL)
+		return fmt.Errorf("failed to update database: %w", err)
+	}
+
+	if !ctx.Quiet {
+		fmt.Printf("Repository '%s' URL updated\n", c.Name)
+		if ctx.Verbose {
+			fmt.Printf("  Old URL: %s\n", oldURL)
+			fmt.Printf("  New URL: %s\n", c.URL)
+		}
+	}
+
+	return nil
+}
