@@ -197,6 +197,67 @@ func parseCommitOutput(output string) ([]Commit, error) {
 	return commits, nil
 }
 
+// AuthorStats contains statistics about an author's contributions
+type AuthorStats struct {
+	Name         string
+	TotalCommits int
+	FirstCommit  time.Time
+	LastCommit   time.Time
+}
+
+// GetAuthorStats retrieves statistics about an author in the repository
+func GetAuthorStats(repoPath, authorName string) (*AuthorStats, error) {
+	// Get total commit count for this author
+	countCmd := exec.Command("git", "-C", repoPath, "rev-list", "--count", "--author="+authorName, "HEAD")
+	var countOut, countErr bytes.Buffer
+	countCmd.Stdout = &countOut
+	countCmd.Stderr = &countErr
+
+	if err := countCmd.Run(); err != nil {
+		return nil, fmt.Errorf("git rev-list count failed: %w: %s", err, countErr.String())
+	}
+
+	var totalCommits int
+	fmt.Sscanf(strings.TrimSpace(countOut.String()), "%d", &totalCommits)
+
+	if totalCommits == 0 {
+		return &AuthorStats{Name: authorName, TotalCommits: 0}, nil
+	}
+
+	// Get first commit date (oldest)
+	firstCmd := exec.Command("git", "-C", repoPath, "log", "--author="+authorName, "--format=%at", "--reverse", "-1")
+	var firstOut, firstErr bytes.Buffer
+	firstCmd.Stdout = &firstOut
+	firstCmd.Stderr = &firstErr
+
+	if err := firstCmd.Run(); err != nil {
+		return nil, fmt.Errorf("git log (first) failed: %w: %s", err, firstErr.String())
+	}
+
+	var firstTimestamp int64
+	fmt.Sscanf(strings.TrimSpace(firstOut.String()), "%d", &firstTimestamp)
+
+	// Get last commit date (most recent)
+	lastCmd := exec.Command("git", "-C", repoPath, "log", "--author="+authorName, "--format=%at", "-1")
+	var lastOut, lastErr bytes.Buffer
+	lastCmd.Stdout = &lastOut
+	lastCmd.Stderr = &lastErr
+
+	if err := lastCmd.Run(); err != nil {
+		return nil, fmt.Errorf("git log (last) failed: %w: %s", err, lastErr.String())
+	}
+
+	var lastTimestamp int64
+	fmt.Sscanf(strings.TrimSpace(lastOut.String()), "%d", &lastTimestamp)
+
+	return &AuthorStats{
+		Name:         authorName,
+		TotalCommits: totalCommits,
+		FirstCommit:  time.Unix(firstTimestamp, 0),
+		LastCommit:   time.Unix(lastTimestamp, 0),
+	}, nil
+}
+
 // GetCommitInfo retrieves detailed information about a commit
 func GetCommitInfo(repoPath, sha string) (*Commit, error) {
 	format := "%H%x1e%an%x1e%at%x1e%B"

@@ -14,14 +14,18 @@ import (
 type Client struct {
 	genaiClient *genai.Client
 	model       string
+	apiKey      string
 }
 
 // NewClient creates a new LLM client based on config
 func NewClient(ctx context.Context, cfg *config.Config) (*Client, error) {
-	// Get API key from environment
-	apiKey := os.Getenv(cfg.LLM.APIKeyEnv)
+	// Get API key: direct config value takes precedence over environment variable
+	apiKey := cfg.LLM.APIKey
+	if apiKey == "" && cfg.LLM.APIKeyEnv != "" {
+		apiKey = os.Getenv(cfg.LLM.APIKeyEnv)
+	}
 	if apiKey == "" {
-		return nil, fmt.Errorf("API key not found in environment variable: %s", cfg.LLM.APIKeyEnv)
+		return nil, fmt.Errorf("API key not configured: set 'api_key' in config or set environment variable '%s'", cfg.LLM.APIKeyEnv)
 	}
 
 	// Initialize GenAI client with Gemini API backend
@@ -36,6 +40,7 @@ func NewClient(ctx context.Context, cfg *config.Config) (*Client, error) {
 	return &Client{
 		genaiClient: client,
 		model:       cfg.LLM.Model,
+		apiKey:      apiKey,
 	}, nil
 }
 
@@ -60,12 +65,9 @@ func (c *Client) GenerateText(ctx context.Context, prompt string) (string, error
 
 // GetGeminiModel returns a model.LLM instance for use with ADK agents
 func (c *Client) GetGeminiModel(ctx context.Context) (model.LLM, error) {
-	// Get API key from environment (same as in NewClient)
-	apiKey := os.Getenv("GOOGLE_API_KEY") // Using hardcoded env var for simplicity
-
 	// Create a Gemini model using the ADK's gemini package
 	llmModel, err := gemini.NewModel(ctx, c.model, &genai.ClientConfig{
-		APIKey:  apiKey,
+		APIKey:  c.apiKey,
 		Backend: genai.BackendGeminiAPI,
 	})
 	if err != nil {

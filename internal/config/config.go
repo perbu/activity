@@ -18,7 +18,8 @@ type Config struct {
 type LLMConfig struct {
 	Provider         string `yaml:"provider"`
 	Model            string `yaml:"model"`
-	APIKeyEnv        string `yaml:"api_key_env"`
+	APIKey           string `yaml:"api_key"`     // Direct API key (takes precedence over api_key_env)
+	APIKeyEnv        string `yaml:"api_key_env"` // Environment variable name containing API key
 	MaxCommits       int    `yaml:"max_commits"`        // Max commits to analyze per run
 	MaxMessageLength int    `yaml:"max_message_length"` // Max length of commit message to include
 
@@ -167,6 +168,8 @@ IMPORTANT GUIDELINES:
    - Unclear messages that seem important
    - Commits that likely have significant impact
    - Bug fixes without clear descriptions
+7. Use get_author_stats to get information about contributors when there are multiple
+   authors or when you want to provide context about who is contributing
 
 OUTPUT FORMAT:
 Provide a summary with these sections:
@@ -174,6 +177,7 @@ Provide a summary with these sections:
 2. Bug Fixes: Issues resolved
 3. Refactoring/Improvements: Code quality changes
 4. Notable Patterns: Trends across commits (if any)
+5. Contributors: Brief info about active authors (use get_author_stats for context)
 
-Keep the summary under 300 words and use clear, professional language.
+Keep the summary under 400 words and use clear, professional language.
 If you had to skip analyzing some commits due to limits, mention this briefly at the end.`

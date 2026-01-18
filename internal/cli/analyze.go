@@ -88,6 +88,15 @@ func analyzeRepository(ctx *Context, name, since, until string, n, limit int) er
 		}
 		fmt.Printf("Analyzing: %s\n", rangeDesc)
 	}
+	// Show commit range if we have commits
+	if len(commits) > 0 {
+		oldest := commits[len(commits)-1]
+		newest := commits[0]
+		fmt.Printf("Range: %s (%s) - %s (%s)\n",
+			oldest.Date.Format("2006-01-02"), oldest.SHA[:7],
+			newest.Date.Format("2006-01-02"), newest.SHA[:7])
+	}
+	fmt.Printf("Model: %s\n", ctx.Config.LLM.Model)
 	fmt.Println()
 
 	// Check if there are commits to analyze

@@ -60,6 +60,7 @@ func (a *Analyzer) createAnalyzerAgent(ctx context.Context, repoPath string, cos
 	// Create tools
 	diffTool := NewGetCommitDiffTool(repoPath, costTracker)
 	msgTool := NewGetFullCommitMessageTool(repoPath)
+	authorTool := NewGetAuthorStatsTool(repoPath)
 
 	// Get system prompt from config (with default fallback)
 	systemPrompt := a.config.GetAgentSystemPrompt()
@@ -70,7 +71,7 @@ func (a *Analyzer) createAnalyzerAgent(ctx context.Context, repoPath string, cos
 		Description: "Analyzes git commits and provides summaries",
 		Model:       geminiModel,
 		Instruction: fmt.Sprintf(systemPrompt, a.config.LLM.MaxDiffFetches),
-		Tools:       []tool.Tool{diffTool, msgTool},
+		Tools:       []tool.Tool{diffTool, msgTool, authorTool},
 	}
 
 	// Create the agent
@@ -100,13 +101,24 @@ func (a *Analyzer) analyzeWithAgent(ctx context.Context, repo *db.Repository, co
 	}
 
 	// Create a runner with in-memory session
+	sessionService := session.InMemoryService()
 	r, err := runner.New(runner.Config{
 		AppName:        "activity-analyzer",
 		Agent:          agt,
-		SessionService: session.InMemoryService(),
+		SessionService: sessionService,
 	})
 	if err != nil {
 		return "", costTracker, fmt.Errorf("failed to create runner: %w", err)
+	}
+
+	// Create the session before running
+	_, err = sessionService.Create(ctx, &session.CreateRequest{
+		AppName:   "activity-analyzer",
+		UserID:    "user1",
+		SessionID: "session1",
+	})
+	if err != nil {
+		return "", costTracker, fmt.Errorf("failed to create session: %w", err)
 	}
 
 	// Create user message content

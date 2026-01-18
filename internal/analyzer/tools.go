@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/perbu/activity/internal/git"
+	"google.golang.org/adk/model"
 	"google.golang.org/adk/tool"
 	"google.golang.org/genai"
 )
@@ -36,6 +37,11 @@ func (t *GetCommitDiffTool) Description() string {
 // IsLongRunning returns false as this is a quick operation
 func (t *GetCommitDiffTool) IsLongRunning() bool {
 	return false
+}
+
+// ProcessRequest adds this tool to the LLM request
+func (t *GetCommitDiffTool) ProcessRequest(ctx tool.Context, req *model.LLMRequest) error {
+	return addFunctionTool(req, t)
 }
 
 // Declaration returns the function declaration for the tool
@@ -152,6 +158,11 @@ func (t *GetFullCommitMessageTool) IsLongRunning() bool {
 	return false
 }
 
+// ProcessRequest adds this tool to the LLM request
+func (t *GetFullCommitMessageTool) ProcessRequest(ctx tool.Context, req *model.LLMRequest) error {
+	return addFunctionTool(req, t)
+}
+
 // Declaration returns the function declaration for the tool
 func (t *GetFullCommitMessageTool) Declaration() *genai.FunctionDeclaration {
 	return &genai.FunctionDeclaration{
@@ -205,4 +216,128 @@ func (t *GetFullCommitMessageTool) Run(ctx tool.Context, args any) (map[string]a
 		"full_message":   commit.Message,
 		"message_length": len(commit.Message),
 	}, nil
+}
+
+// GetAuthorStatsTool provides author statistics for the agent
+type GetAuthorStatsTool struct {
+	repoPath string
+}
+
+// NewGetAuthorStatsTool creates a new GetAuthorStatsTool
+func NewGetAuthorStatsTool(repoPath string) *GetAuthorStatsTool {
+	return &GetAuthorStatsTool{
+		repoPath: repoPath,
+	}
+}
+
+// Name returns the tool name
+func (t *GetAuthorStatsTool) Name() string {
+	return "get_author_stats"
+}
+
+// Description returns the tool description
+func (t *GetAuthorStatsTool) Description() string {
+	return "Retrieves statistics about an author's contributions to the repository, including total commits and when they started contributing. Use this to provide context about contributors in your summary."
+}
+
+// IsLongRunning returns false as this is a quick operation
+func (t *GetAuthorStatsTool) IsLongRunning() bool {
+	return false
+}
+
+// ProcessRequest adds this tool to the LLM request
+func (t *GetAuthorStatsTool) ProcessRequest(ctx tool.Context, req *model.LLMRequest) error {
+	return addFunctionTool(req, t)
+}
+
+// Declaration returns the function declaration for the tool
+func (t *GetAuthorStatsTool) Declaration() *genai.FunctionDeclaration {
+	return &genai.FunctionDeclaration{
+		Name:        t.Name(),
+		Description: t.Description(),
+		Parameters: &genai.Schema{
+			Type: "object",
+			Properties: map[string]*genai.Schema{
+				"author_name": {
+					Type:        "string",
+					Description: "The author name exactly as it appears in the commits (e.g., 'John Doe')",
+				},
+			},
+			Required: []string{"author_name"},
+		},
+	}
+}
+
+// Run executes the tool
+func (t *GetAuthorStatsTool) Run(ctx tool.Context, args any) (map[string]any, error) {
+	// Parse arguments
+	argsMap, ok := args.(map[string]any)
+	if !ok {
+		if argsStr, ok := args.(string); ok {
+			if err := json.Unmarshal([]byte(argsStr), &argsMap); err != nil {
+				return map[string]any{"error": "invalid arguments format"}, nil
+			}
+		} else {
+			return map[string]any{"error": "invalid arguments type"}, nil
+		}
+	}
+
+	authorName, ok := argsMap["author_name"].(string)
+	if !ok {
+		return map[string]any{"error": "author_name must be a string"}, nil
+	}
+
+	stats, err := git.GetAuthorStats(t.repoPath, authorName)
+	if err != nil {
+		return map[string]any{
+			"error":       fmt.Sprintf("Error fetching author stats: %v", err),
+			"author_name": authorName,
+		}, nil
+	}
+
+	if stats.TotalCommits == 0 {
+		return map[string]any{
+			"author_name":   authorName,
+			"total_commits": 0,
+			"message":       "No commits found for this author",
+		}, nil
+	}
+
+	return map[string]any{
+		"author_name":   stats.Name,
+		"total_commits": stats.TotalCommits,
+		"first_commit":  stats.FirstCommit.Format("2006-01-02"),
+		"last_commit":   stats.LastCommit.Format("2006-01-02"),
+	}, nil
+}
+
+// functionTool is an interface for tools that provide function declarations
+type functionTool interface {
+	tool.Tool
+	Declaration() *genai.FunctionDeclaration
+}
+
+// addFunctionTool adds a function tool to the LLM request
+func addFunctionTool(req *model.LLMRequest, t functionTool) error {
+	if req.Config == nil {
+		req.Config = &genai.GenerateContentConfig{}
+	}
+
+	decl := t.Declaration()
+	if decl == nil {
+		return fmt.Errorf("tool %q has no declaration", t.Name())
+	}
+
+	// Add to tools map for execution lookup
+	if req.Tools == nil {
+		req.Tools = make(map[string]any)
+	}
+	req.Tools[t.Name()] = t
+
+	// Add function declaration to config
+	req.Config.Tools = append(req.Config.Tools, &genai.Tool{
+		FunctionDeclarations: []*genai.FunctionDeclaration{decl},
+	})
+
+	return nil
 }
