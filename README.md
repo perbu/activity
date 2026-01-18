@@ -5,6 +5,7 @@ AI-powered git commit analyzer that generates human-readable summaries of reposi
 ## Features
 
 - **Intelligent Analysis**: Agent-based analyzer decides when to fetch diffs vs. using commit messages
+- **Weekly Reports**: Generate week-indexed summaries with backfill support
 - **Cost Controls**: Hard limits on diff fetching, diff size, and total tokens
 - **Incremental Tracking**: Analyzes only new commits since last run
 - **Multi-Repository**: Track and analyze multiple repositories
@@ -127,6 +128,33 @@ activity show <name>
 activity update <name> --from-sha abc123
 ```
 
+### Weekly Reports
+
+Generate week-indexed summaries for historical queries and web UI integration.
+
+```bash
+# Generate report for specific week
+activity report generate <name> --week=2026-W03
+
+# Backfill all weeks since a date
+activity report generate <name> --since=2025-12-01
+
+# Regenerate existing reports
+activity report generate <name> --since=2025-12-01 --force
+
+# Show latest report
+activity report show <name> --latest
+
+# Show report for specific week
+activity report show <name> --week=2026-W03
+
+# List all reports for a repository
+activity report list <name>
+
+# List all reports (all repos), filtered by year
+activity report list --all --year=2026
+```
+
 ### Configuration
 
 ```bash
@@ -152,11 +180,18 @@ All data stored in SQLite database at `<data_dir>/activity.db`:
 
 - `repositories`: Tracked repos with metadata
 - `activity_runs`: Analysis results with summaries and cost tracking
+- `weekly_reports`: Week-indexed summaries keyed by (repo, year, week)
+- `subscribers`, `subscriptions`, `newsletter_sends`: Newsletter feature tables
 
-Query example:
+Query examples:
 ```sql
+# View latest analysis run
 sqlite3 ~/.local/share/activity/activity.db \
   "SELECT agent_mode, tool_usage_stats FROM activity_runs ORDER BY id DESC LIMIT 1;"
+
+# View weekly reports
+sqlite3 ~/.local/share/activity/activity.db \
+  "SELECT year, week, commit_count, created_at FROM weekly_reports ORDER BY year DESC, week DESC;"
 ```
 
 ## Development

@@ -16,11 +16,11 @@ Configuration management with YAML support. Defines `Config` and `LLMConfig` str
 
 ### `internal/db`
 
-SQLite database layer with migrations. Manages two primary tables: `repositories` (tracked repos with metadata) and `activity_runs` (analysis results with summaries and cost tracking). Includes CRUD operations for both models. Migration version 2 adds agent-specific fields (`agent_mode`, `tool_usage_stats`) for Phase 3 cost tracking.
+SQLite database layer with migrations. Manages tables: `repositories` (tracked repos), `activity_runs` (analysis results), `weekly_reports` (week-indexed summaries), and newsletter tables. Includes CRUD operations for all models. Migration version 4 adds `weekly_reports` table for week-indexed analysis storage.
 
 ### `internal/git`
 
-Git operations wrapper using `exec.Command`. Provides functions for cloning, pulling, retrieving commit ranges, fetching diffs, and getting detailed commit info. Uses record separator delimiters to safely parse git output. Includes cost warning comment on `GetCommitDiff` function.
+Git operations wrapper using `exec.Command`. Provides functions for cloning, pulling, retrieving commit ranges, fetching diffs, and getting detailed commit info. Uses record separator delimiters to safely parse git output. Includes ISO week utilities (`ISOWeekBounds`, `GetCommitsForWeek`, `ParseISOWeek`, `WeeksInRange`) for weekly report generation.
 
 ### `internal/llm`
 
@@ -32,7 +32,7 @@ Core analysis logic with three modes: Phase 2 (simple LLM), Phase 3 (agent with 
 
 ### `internal/cli`
 
-CLI command implementations. Each command (add, list, show, update) performs specific operations: `add` registers new repos, `list` displays tracked repos, `show` displays latest summary, `update` performs analysis on new commits. Handles both Phase 2 and Phase 3 execution paths transparently.
+CLI command implementations. Commands include: `repo` (add/remove/list repos), `analyze` (analyze commits), `update` (pull and analyze), `report` (generate/show/list weekly reports), and `newsletter` (subscriber management). The `report` command supports backfill via `--since` flag and week-specific generation via `--week` flag.
 
 ## Phase Architecture
 

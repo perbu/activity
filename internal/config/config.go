@@ -10,25 +10,36 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	DataDir string    `yaml:"data_dir"`
-	LLM     LLMConfig `yaml:"llm"`
+	DataDir    string           `yaml:"data_dir"`
+	LLM        LLMConfig        `yaml:"llm"`
+	Newsletter NewsletterConfig `yaml:"newsletter"`
+}
+
+// NewsletterConfig represents newsletter email configuration
+type NewsletterConfig struct {
+	Enabled        bool   `yaml:"enabled"`
+	SendGridAPIKey string `yaml:"sendgrid_api_key"`     // Direct API key
+	SendGridKeyEnv string `yaml:"sendgrid_api_key_env"` // Environment variable name
+	FromEmail      string `yaml:"from_email"`
+	FromName       string `yaml:"from_name"`
+	SubjectPrefix  string `yaml:"subject_prefix"`
 }
 
 // LLMConfig represents LLM provider configuration
 type LLMConfig struct {
 	Provider         string `yaml:"provider"`
 	Model            string `yaml:"model"`
-	APIKey           string `yaml:"api_key"`     // Direct API key (takes precedence over api_key_env)
-	APIKeyEnv        string `yaml:"api_key_env"` // Environment variable name containing API key
+	APIKey           string `yaml:"api_key"`            // Direct API key (takes precedence over api_key_env)
+	APIKeyEnv        string `yaml:"api_key_env"`        // Environment variable name containing API key
 	MaxCommits       int    `yaml:"max_commits"`        // Max commits to analyze per run
 	MaxMessageLength int    `yaml:"max_message_length"` // Max length of commit message to include
 
 	// Phase 3: Agent-based analysis configuration
-	UseAgent       bool `yaml:"use_agent"`         // Enable agent-based analysis (default: false)
-	MaxDiffFetches int  `yaml:"max_diff_fetches"`  // Max diffs agent can fetch per analysis (default: 5)
-	MaxDiffSizeKB  int  `yaml:"max_diff_size_kb"`  // Max size of each diff in KB (default: 10)
-	MaxTotalTokens int  `yaml:"max_total_tokens"`  // Max total tokens for agent session (default: 100000)
-	EnableToolLogs bool `yaml:"enable_tool_logs"`  // Enable detailed tool execution logs (default: true)
+	UseAgent       bool `yaml:"use_agent"`        // Enable agent-based analysis (default: false)
+	MaxDiffFetches int  `yaml:"max_diff_fetches"` // Max diffs agent can fetch per analysis (default: 5)
+	MaxDiffSizeKB  int  `yaml:"max_diff_size_kb"` // Max size of each diff in KB (default: 10)
+	MaxTotalTokens int  `yaml:"max_total_tokens"` // Max total tokens for agent session (default: 100000)
+	EnableToolLogs bool `yaml:"enable_tool_logs"` // Enable detailed tool execution logs (default: true)
 
 	// Prompt customization (optional overrides)
 	Phase2Prompt      string `yaml:"phase2_prompt"`       // Custom prompt for Phase 2 simple LLM analysis
@@ -47,11 +58,18 @@ func DefaultConfig() *Config {
 			MaxMessageLength: 1000, // Truncate long commit messages
 
 			// Phase 3: Agent mode (default) - intelligent diff fetching
-			UseAgent:       true,    // Agent mode by default (set false for Phase 2)
-			MaxDiffFetches: 5,       // Max 5 diffs per analysis
-			MaxDiffSizeKB:  10,      // Max 10KB per diff
-			MaxTotalTokens: 100000,  // ~$0.01 cost limit
-			EnableToolLogs: true,    // Enable logging for debugging
+			UseAgent:       true,   // Agent mode by default (set false for Phase 2)
+			MaxDiffFetches: 5,      // Max 5 diffs per analysis
+			MaxDiffSizeKB:  10,     // Max 10KB per diff
+			MaxTotalTokens: 100000, // ~$0.01 cost limit
+			EnableToolLogs: true,   // Enable logging for debugging
+		},
+		Newsletter: NewsletterConfig{
+			Enabled:        false,
+			SendGridKeyEnv: "SENDGRID_API_KEY",
+			FromEmail:      "activity@example.com",
+			FromName:       "Activity Digest",
+			SubjectPrefix:  "[Activity]",
 		},
 	}
 }
@@ -147,6 +165,17 @@ Focus on:
 4. Notable patterns or trends
 
 Keep the summary under 300 words and use clear, professional language.`
+
+// GetSendGridAPIKey returns the SendGrid API key, checking direct key first then env var
+func (c *Config) GetSendGridAPIKey() string {
+	if c.Newsletter.SendGridAPIKey != "" {
+		return c.Newsletter.SendGridAPIKey
+	}
+	if c.Newsletter.SendGridKeyEnv != "" {
+		return os.Getenv(c.Newsletter.SendGridKeyEnv)
+	}
+	return ""
+}
 
 // DefaultAgentSystemPrompt is the default system instruction for Phase 3 agent
 const DefaultAgentSystemPrompt = `You are a Git commit analyzer that summarizes development activity.

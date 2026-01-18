@@ -125,6 +125,10 @@ func run() error {
 		return cli.Repo(ctx, args)
 	case "show-prompts":
 		return cli.ShowPrompts(ctx, args)
+	case "newsletter":
+		return cli.Newsletter(ctx, args)
+	case "report":
+		return cli.Report(ctx, args)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", subcommand)
 		printUsage()
@@ -155,6 +159,9 @@ Commands:
   analyze [repo...]   Analyze repository activity (requires --since, --until, or -n)
   update [repo...]    Update repositories (git pull)
   repo <subcommand>   Manage repositories
+  report <subcommand> Generate and view weekly reports
+  newsletter <subcommand>
+                      Manage newsletter subscriptions and send emails
   show-prompts        Display current analysis prompts
 
 Repository Management:
@@ -169,12 +176,44 @@ Repository Management:
   repo info <name>    Show repository details
   repo list           List all repositories (alias for 'list')
 
+Weekly Reports:
+  report generate <repo> --week=2026-W02
+                      Generate report for specific week
+  report generate <repo> --since=2025-01-01
+                      Backfill reports since date
+  report generate <repo> ... --force
+                      Regenerate existing reports
+  report show <repo> [--week=2026-W02|--latest]
+                      Show stored report
+  report list <repo> [--year=2026]
+                      List reports for repository
+  report list --all [--year=2026]
+                      List all reports
+
+Newsletter Management:
+  newsletter subscriber add [--all] <email>
+                      Add a subscriber (--all = subscribe to all repos)
+  newsletter subscriber remove <email>
+                      Remove a subscriber
+  newsletter subscriber list
+                      List all subscribers
+  newsletter subscribe <email> <repo>
+                      Subscribe to a specific repository
+  newsletter unsubscribe <email> <repo>
+                      Unsubscribe from a repository
+  newsletter send [--dry-run] [--since=7d]
+                      Send newsletters to all subscribers
+
 Examples:
   activity repo add myproject https://github.com/user/repo
   activity list
   activity update myproject
   activity analyze myproject --since '1 week ago'
   activity analyze myproject -n 5
+  activity report generate myproject --week=2026-W03
+  activity report show myproject --latest
+  activity newsletter subscriber add user@example.com --all
+  activity newsletter send --dry-run --since=7d
 
 For more information, visit: https://github.com/perbu/activity`)
 }
