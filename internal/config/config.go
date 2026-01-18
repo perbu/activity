@@ -1,0 +1,179 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"gopkg.in/yaml.v3"
+)
+
+// Config represents the application configuration
+type Config struct {
+	DataDir string    `yaml:"data_dir"`
+	LLM     LLMConfig `yaml:"llm"`
+}
+
+// LLMConfig represents LLM provider configuration
+type LLMConfig struct {
+	Provider         string `yaml:"provider"`
+	Model            string `yaml:"model"`
+	APIKeyEnv        string `yaml:"api_key_env"`
+	MaxCommits       int    `yaml:"max_commits"`        // Max commits to analyze per run
+	MaxMessageLength int    `yaml:"max_message_length"` // Max length of commit message to include
+
+	// Phase 3: Agent-based analysis configuration
+	UseAgent       bool `yaml:"use_agent"`         // Enable agent-based analysis (default: false)
+	MaxDiffFetches int  `yaml:"max_diff_fetches"`  // Max diffs agent can fetch per analysis (default: 5)
+	MaxDiffSizeKB  int  `yaml:"max_diff_size_kb"`  // Max size of each diff in KB (default: 10)
+	MaxTotalTokens int  `yaml:"max_total_tokens"`  // Max total tokens for agent session (default: 100000)
+	EnableToolLogs bool `yaml:"enable_tool_logs"`  // Enable detailed tool execution logs (default: true)
+
+	// Prompt customization (optional overrides)
+	Phase2Prompt      string `yaml:"phase2_prompt"`       // Custom prompt for Phase 2 simple LLM analysis
+	AgentSystemPrompt string `yaml:"agent_system_prompt"` // Custom system instruction for Phase 3 agent
+}
+
+// DefaultConfig returns the default configuration
+func DefaultConfig() *Config {
+	return &Config{
+		DataDir: "", // Must be specified by user
+		LLM: LLMConfig{
+			Provider:         "gemini",
+			Model:            "gemini-3.0-flash",
+			APIKeyEnv:        "GOOGLE_API_KEY",
+			MaxCommits:       50,   // Limit to 50 commits per analysis
+			MaxMessageLength: 1000, // Truncate long commit messages
+
+			// Phase 3: Agent mode (default) - intelligent diff fetching
+			UseAgent:       true,    // Agent mode by default (set false for Phase 2)
+			MaxDiffFetches: 5,       // Max 5 diffs per analysis
+			MaxDiffSizeKB:  10,      // Max 10KB per diff
+			MaxTotalTokens: 100000,  // ~$0.01 cost limit
+			EnableToolLogs: true,    // Enable logging for debugging
+		},
+	}
+}
+
+// Load loads configuration from the specified path, falling back to defaults
+func Load(configPath string) (*Config, error) {
+	// If no path specified, use default location
+	if configPath == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get home directory: %w", err)
+		}
+		configPath = filepath.Join(homeDir, ".config", "activity", "config.yaml")
+	}
+
+	// Expand ~ in path
+	configPath = expandPath(configPath)
+
+	// Start with defaults
+	cfg := DefaultConfig()
+
+	// Try to load from file
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		// If file doesn't exist, return defaults
+		if os.IsNotExist(err) {
+			return cfg, nil
+		}
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	// Parse YAML
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	// Expand ~ in data_dir if present
+	cfg.DataDir = expandPath(cfg.DataDir)
+
+	return cfg, nil
+}
+
+// expandPath expands ~ to home directory in paths
+func expandPath(path string) string {
+	if path == "" {
+		return path
+	}
+
+	if path[0] == '~' {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return path
+		}
+		if len(path) == 1 {
+			return homeDir
+		}
+		return filepath.Join(homeDir, path[1:])
+	}
+
+	return path
+}
+
+// EnsureDataDir creates the data directory if it doesn't exist
+func (c *Config) EnsureDataDir() error {
+	if err := os.MkdirAll(c.DataDir, 0755); err != nil {
+		return fmt.Errorf("failed to create data directory: %w", err)
+	}
+	return nil
+}
+
+// GetPhase2Prompt returns the Phase 2 prompt, either custom or default
+func (c *Config) GetPhase2Prompt() string {
+	if c.LLM.Phase2Prompt != "" {
+		return c.LLM.Phase2Prompt
+	}
+	return DefaultPhase2Prompt
+}
+
+// GetAgentSystemPrompt returns the agent system prompt, either custom or default
+func (c *Config) GetAgentSystemPrompt() string {
+	if c.LLM.AgentSystemPrompt != "" {
+		return c.LLM.AgentSystemPrompt
+	}
+	return DefaultAgentSystemPrompt
+}
+
+// DefaultPhase2Prompt is the default prompt template for Phase 2 analysis
+const DefaultPhase2Prompt = `Please provide a concise summary of the development activity in this commit range.
+Focus on:
+1. Main features or changes implemented
+2. Bug fixes
+3. Refactoring or code improvements
+4. Notable patterns or trends
+
+Keep the summary under 300 words and use clear, professional language.`
+
+// DefaultAgentSystemPrompt is the default system instruction for Phase 3 agent
+const DefaultAgentSystemPrompt = `You are a Git commit analyzer that summarizes development activity.
+
+Your goal is to produce a concise summary of what happened in this commit range.
+
+IMPORTANT GUIDELINES:
+1. First, review all commit messages provided in the user prompt
+2. If a commit message is CLEAR and DESCRIPTIVE (e.g., "Fix null pointer in user auth",
+   "Add pagination to API endpoint"), you can summarize it WITHOUT viewing the diff
+3. ONLY use get_commit_diff when:
+   - The commit message is vague (e.g., "fix", "update", "changes", "stuff")
+   - The message doesn't explain WHAT was changed
+   - You need to verify the scope of a change
+   - The message references a ticket/issue without explanation (e.g., "Fix #123")
+4. You have LIMITED diff fetches (max %d per analysis) - use them wisely
+5. Before fetching a diff, consider using get_full_commit_message if the message was truncated
+6. Prioritize diffs for:
+   - Unclear messages that seem important
+   - Commits that likely have significant impact
+   - Bug fixes without clear descriptions
+
+OUTPUT FORMAT:
+Provide a summary with these sections:
+1. Main Features or Changes: New capabilities added
+2. Bug Fixes: Issues resolved
+3. Refactoring/Improvements: Code quality changes
+4. Notable Patterns: Trends across commits (if any)
+
+Keep the summary under 300 words and use clear, professional language.
+If you had to skip analyzing some commits due to limits, mention this briefly at the end.`

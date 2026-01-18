@@ -1,0 +1,24 @@
+# Activity Configuration Example
+# Copy to ~/.config/activity/config.yaml
+
+data_dir: "~/.local/share/activity"
+
+llm:
+  provider: "gemini"
+  model: "gemini-3.0-flash"
+  api_key_env: "GOOGLE_API_KEY"
+
+  # Basic limits (apply to both modes)
+  max_commits: 50        # Max commits to analyze per run
+  max_message_length: 1000  # Truncate long commit messages
+
+  # Phase 3: Agent mode (default) - intelligent diff fetching
+  use_agent: true        # Set to false for Phase 2 simple mode
+  max_diff_fetches: 5    # Max diffs agent can fetch per analysis
+  max_diff_size_kb: 10   # Max size of each diff in KB
+  max_total_tokens: 100000  # ~$0.01 cost limit
+  enable_tool_logs: true # Log agent tool calls for debugging
+
+  # Optional: Custom prompts (leave blank to use defaults)
+  # phase2_prompt: "Your custom Phase 2 prompt here"
+  # agent_system_prompt: "Your custom agent instruction here"
