@@ -321,3 +321,195 @@ func TestWeeksInRangeEmpty(t *testing.T) {
 		t.Errorf("expected empty result when end < start, got %v", weeks)
 	}
 }
+
+func TestParseCommitOutput(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantLen     int
+		wantFirst   *Commit
+		wantErr     bool
+	}{
+		{
+			name:    "empty string",
+			input:   "",
+			wantLen: 0,
+		},
+		{
+			name:    "whitespace only",
+			input:   "  \n  \n  ",
+			wantLen: 0,
+		},
+		{
+			name:    "single commit",
+			input:   "abc123\x1eJohn Doe\x1e1700000000\x1eInitial commit",
+			wantLen: 1,
+			wantFirst: &Commit{
+				SHA:     "abc123",
+				Author:  "John Doe",
+				Date:    time.Unix(1700000000, 0),
+				Message: "Initial commit",
+			},
+		},
+		{
+			name: "multiple commits",
+			input: `abc123` + "\x1e" + `John Doe` + "\x1e" + `1700000000` + "\x1e" + `First commit
+def456` + "\x1e" + `Jane Smith` + "\x1e" + `1700001000` + "\x1e" + `Second commit`,
+			wantLen: 2,
+			wantFirst: &Commit{
+				SHA:     "abc123",
+				Author:  "John Doe",
+				Date:    time.Unix(1700000000, 0),
+				Message: "First commit",
+			},
+		},
+		{
+			name:    "malformed line (too few parts)",
+			input:   "abc123\x1eJohn Doe\x1e1700000000",
+			wantLen: 0, // Should skip malformed lines
+		},
+		{
+			name: "mixed valid and invalid",
+			input: `abc123` + "\x1e" + `John Doe` + "\x1e" + `1700000000` + "\x1e" + `Valid commit
+malformed line without separators
+def456` + "\x1e" + `Jane` + "\x1e" + `1700001000` + "\x1e" + `Another valid`,
+			wantLen: 2, // Should include only valid lines
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			commits, err := parseCommitOutput(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseCommitOutput() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if len(commits) != tt.wantLen {
+				t.Errorf("parseCommitOutput() returned %d commits, want %d", len(commits), tt.wantLen)
+				return
+			}
+			if tt.wantFirst != nil && tt.wantLen > 0 {
+				if commits[0].SHA != tt.wantFirst.SHA {
+					t.Errorf("first commit SHA = %q, want %q", commits[0].SHA, tt.wantFirst.SHA)
+				}
+				if commits[0].Author != tt.wantFirst.Author {
+					t.Errorf("first commit Author = %q, want %q", commits[0].Author, tt.wantFirst.Author)
+				}
+				if !commits[0].Date.Equal(tt.wantFirst.Date) {
+					t.Errorf("first commit Date = %v, want %v", commits[0].Date, tt.wantFirst.Date)
+				}
+				if commits[0].Message != tt.wantFirst.Message {
+					t.Errorf("first commit Message = %q, want %q", commits[0].Message, tt.wantFirst.Message)
+				}
+			}
+		})
+	}
+}
+
+func TestInjectToken(t *testing.T) {
+	tests := []struct {
+		name    string
+		url     string
+		token   string
+		want    string
+		wantErr bool
+	}{
+		{
+			name:  "github https URL",
+			url:   "https://github.com/owner/repo.git",
+			token: "ghp_test123",
+			want:  "https://x-access-token:ghp_test123@github.com/owner/repo.git",
+		},
+		{
+			name:  "github https URL without .git",
+			url:   "https://github.com/owner/repo",
+			token: "ghp_test123",
+			want:  "https://x-access-token:ghp_test123@github.com/owner/repo",
+		},
+		{
+			name:  "gitlab https URL",
+			url:   "https://gitlab.com/group/project.git",
+			token: "glpat-abc",
+			want:  "https://x-access-token:glpat-abc@gitlab.com/group/project.git",
+		},
+		{
+			name:    "ssh URL should fail",
+			url:     "git@github.com:owner/repo.git",
+			token:   "token",
+			wantErr: true,
+		},
+		{
+			name:    "http (not https) should fail",
+			url:     "http://github.com/owner/repo.git",
+			token:   "token",
+			wantErr: true,
+		},
+		{
+			name:  "empty token",
+			url:   "https://github.com/owner/repo.git",
+			token: "",
+			want:  "https://x-access-token:@github.com/owner/repo.git",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := injectToken(tt.url, tt.token)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("injectToken() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && got != tt.want {
+				t.Errorf("injectToken() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCurrentISOWeek(t *testing.T) {
+	// Test that CurrentISOWeek returns the same result as time.Now().ISOWeek()
+	year, week := CurrentISOWeek()
+	expectedYear, expectedWeek := time.Now().ISOWeek()
+
+	if year != expectedYear || week != expectedWeek {
+		t.Errorf("CurrentISOWeek() = (%d, %d), want (%d, %d)",
+			year, week, expectedYear, expectedWeek)
+	}
+}
+
+func TestDefaultDiffExcludes(t *testing.T) {
+	// Verify that the default excludes contain expected patterns
+	expectedPatterns := []string{
+		"vendor",
+		"node_modules",
+		"go.sum",
+		"package-lock.json",
+		"yarn.lock",
+	}
+
+	for _, expected := range expectedPatterns {
+		found := false
+		for _, exclude := range defaultDiffExcludes {
+			if contains(exclude, expected) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("defaultDiffExcludes should contain pattern for %q", expected)
+		}
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
