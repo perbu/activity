@@ -92,8 +92,8 @@ func (db *DB) migrate() error {
 		},
 		{
 			version: 2,
+			// Phase 3: Add agent-based analysis columns
 			sql: `
-				-- Phase 3: Add agent-based analysis columns
 				ALTER TABLE activity_runs ADD COLUMN agent_mode BOOLEAN DEFAULT 0;
 				ALTER TABLE activity_runs ADD COLUMN tool_usage_stats TEXT;
 
@@ -102,8 +102,8 @@ func (db *DB) migrate() error {
 		},
 		{
 			version: 3,
+			// -- Newsletter feature: subscribers and subscriptions
 			sql: `
-				-- Newsletter feature: subscribers and subscriptions
 				CREATE TABLE subscribers (
 					id INTEGER PRIMARY KEY AUTOINCREMENT,
 					email TEXT UNIQUE NOT NULL,
@@ -140,8 +140,8 @@ func (db *DB) migrate() error {
 		},
 		{
 			version: 4,
+			// -- Weekly reports feature: week-indexed analysis storage
 			sql: `
-				-- Weekly reports feature: week-indexed analysis storage
 				CREATE TABLE weekly_reports (
 					id INTEGER PRIMARY KEY AUTOINCREMENT,
 					repo_id INTEGER NOT NULL,
