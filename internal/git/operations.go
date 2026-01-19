@@ -108,11 +108,65 @@ func GetCommitRange(repoPath, fromSHA, toSHA string) ([]Commit, error) {
 	return commits, nil
 }
 
-// GetCommitDiff returns the diff for a specific commit
-// WARNING: This function is not currently used. If enabled for LLM analysis,
-// it could significantly increase token usage and costs. See COST_CONTROLS.md
-// for details on safeguards needed before using this in AI analysis.
+// defaultDiffExcludes contains pathspecs to filter out vendor directories and lock files
+// These patterns reduce noise in diffs and lower token usage for LLM analysis
+var defaultDiffExcludes = []string{
+	":(exclude)vendor",
+	":(exclude)**/vendor",
+	":(exclude)node_modules",
+	":(exclude)**/node_modules",
+	":(exclude)go.sum",
+	":(exclude)package-lock.json",
+	":(exclude)yarn.lock",
+	":(exclude)pnpm-lock.yaml",
+	":(exclude)Cargo.lock",
+	":(exclude)poetry.lock",
+	":(exclude)composer.lock",
+}
+
+// GetCommitDiff returns the diff for a specific commit with vendor/lock files filtered out.
+// Vendor directories (vendor/, node_modules/) and lock files are excluded by default.
+// The response includes a note showing how many lines were suppressed.
+// Use GetCommitDiffFull if you need the complete unfiltered diff.
 func GetCommitDiff(repoPath, sha string) (string, error) {
+	// Get filtered diff (excluding vendor/node_modules/lock files)
+	args := []string{"-C", repoPath, "show", "--format=", sha, "--"}
+	args = append(args, defaultDiffExcludes...)
+	filteredCmd := exec.Command("git", args...)
+	var filteredOut, filteredErr bytes.Buffer
+	filteredCmd.Stdout = &filteredOut
+	filteredCmd.Stderr = &filteredErr
+
+	if err := filteredCmd.Run(); err != nil {
+		return "", fmt.Errorf("git show (filtered) failed: %w: %s", err, filteredErr.String())
+	}
+
+	// Get full diff to count suppressed lines
+	fullCmd := exec.Command("git", "-C", repoPath, "show", "--format=", sha)
+	var fullOut, fullErr bytes.Buffer
+	fullCmd.Stdout = &fullOut
+	fullCmd.Stderr = &fullErr
+
+	if err := fullCmd.Run(); err != nil {
+		return "", fmt.Errorf("git show (full) failed: %w: %s", err, fullErr.String())
+	}
+
+	filtered := filteredOut.String()
+	full := fullOut.String()
+
+	filteredLines := strings.Count(filtered, "\n")
+	fullLines := strings.Count(full, "\n")
+
+	if suppressed := fullLines - filteredLines; suppressed > 0 {
+		return fmt.Sprintf("%s\n[%d lines suppressed from vendor/node_modules/lock files]\n",
+			filtered, suppressed), nil
+	}
+	return filtered, nil
+}
+
+// GetCommitDiffFull returns the complete diff for a commit without any filtering.
+// Use this when you need to see vendor directories or lock file changes.
+func GetCommitDiffFull(repoPath, sha string) (string, error) {
 	cmd := exec.Command("git", "-C", repoPath, "show", "--format=", sha)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

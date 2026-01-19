@@ -52,6 +52,7 @@ type RepoSummary struct {
 	URL         string
 	Branch      string
 	Active      bool
+	Description string // AI-generated description from README
 	ReportCount int
 	LastReport  string // formatted date or "No reports"
 }

@@ -70,6 +70,7 @@ func (s *Server) handleRepoList(w http.ResponseWriter, r *http.Request) {
 			URL:         repo.URL,
 			Branch:      repo.Branch,
 			Active:      repo.Active,
+			Description: repo.Description.String,
 			ReportCount: len(reports),
 			LastReport:  "No reports",
 		}

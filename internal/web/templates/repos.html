@@ -18,6 +18,9 @@
             {{end}}
         </div>
         <div class="url-display" title="{{.URL}}">{{.URL}}</div>
+        {{if .Description}}
+        <div class="description">{{.Description}}</div>
+        {{end}}
         <div class="stats-row">
             <span>{{.ReportCount}} reports</span>
             <span>{{.LastReport}}</span>

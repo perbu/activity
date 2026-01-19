@@ -496,6 +496,14 @@ tr:hover {
     white-space: nowrap;
 }
 
+/* Description */
+.description {
+    color: var(--text-secondary);
+    font-size: 12px;
+    margin-top: 8px;
+    line-height: 1.5;
+}
+
 /* Stats row */
 .stats-row {
     display: flex;

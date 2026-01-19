@@ -41,7 +41,7 @@ func (t *GetCommitDiffTool) Name() string {
 
 // Description returns the tool description
 func (t *GetCommitDiffTool) Description() string {
-	return "Retrieves the code diff for a specific commit. Use ONLY when the commit message is unclear, vague, or lacks sufficient detail to understand what was changed. This is an expensive operation, so use it wisely."
+	return "Retrieves the code diff for a specific commit. Vendor directories (vendor/, node_modules/) and lock files are filtered out by default. The response will indicate how many lines were suppressed. Use get_commit_diff_full if you need the complete unfiltered diff. Use ONLY when the commit message is unclear, vague, or lacks sufficient detail to understand what was changed. This is an expensive operation, so use it wisely."
 }
 
 // IsLongRunning returns false as this is a quick operation
@@ -146,6 +146,135 @@ func (t *GetCommitDiffTool) Run(ctx tool.Context, args any) (map[string]any, err
 		"diff":       diff,
 		"size_bytes": len(diff),
 		"reason":     reason,
+	}, nil
+}
+
+// GetCommitDiffFullTool provides access to unfiltered commit diffs for the agent
+type GetCommitDiffFullTool struct {
+	repoPath    string
+	costTracker *CostTracker
+}
+
+// NewGetCommitDiffFullTool creates a new GetCommitDiffFullTool
+func NewGetCommitDiffFullTool(repoPath string, costTracker *CostTracker) *GetCommitDiffFullTool {
+	return &GetCommitDiffFullTool{
+		repoPath:    repoPath,
+		costTracker: costTracker,
+	}
+}
+
+// Name returns the tool name
+func (t *GetCommitDiffFullTool) Name() string {
+	return "get_commit_diff_full"
+}
+
+// Description returns the tool description
+func (t *GetCommitDiffFullTool) Description() string {
+	return "Get the COMPLETE diff for a commit including vendor directories and lock files. Only use this if the filtered diff (from get_commit_diff) indicated suppressed lines and you need to see them. This is an expensive operation."
+}
+
+// IsLongRunning returns false as this is a quick operation
+func (t *GetCommitDiffFullTool) IsLongRunning() bool {
+	return false
+}
+
+// ProcessRequest adds this tool to the LLM request
+func (t *GetCommitDiffFullTool) ProcessRequest(ctx tool.Context, req *model.LLMRequest) error {
+	return addFunctionTool(req, t)
+}
+
+// Declaration returns the function declaration for the tool
+func (t *GetCommitDiffFullTool) Declaration() *genai.FunctionDeclaration {
+	return &genai.FunctionDeclaration{
+		Name:        t.Name(),
+		Description: t.Description(),
+		Parameters: &genai.Schema{
+			Type: "object",
+			Properties: map[string]*genai.Schema{
+				"commit_sha": {
+					Type:        "string",
+					Description: "The commit SHA (can be full 40-char or shortened 8-char form)",
+				},
+				"reason": {
+					Type:        "string",
+					Description: "Explanation for why the full unfiltered diff is needed",
+				},
+			},
+			Required: []string{"commit_sha", "reason"},
+		},
+	}
+}
+
+// Run executes the tool
+func (t *GetCommitDiffFullTool) Run(ctx tool.Context, args any) (map[string]any, error) {
+	// Parse arguments
+	argsMap, ok := args.(map[string]any)
+	if !ok {
+		if argsStr, ok := args.(string); ok {
+			if err := json.Unmarshal([]byte(argsStr), &argsMap); err != nil {
+				return map[string]any{"error": "invalid arguments format"}, nil
+			}
+		} else {
+			return map[string]any{"error": "invalid arguments type"}, nil
+		}
+	}
+
+	commitSHA, ok := argsMap["commit_sha"].(string)
+	if !ok {
+		return map[string]any{"error": "commit_sha must be a string"}, nil
+	}
+
+	reason, ok := argsMap["reason"].(string)
+	if !ok {
+		return map[string]any{"error": "reason must be a string"}, nil
+	}
+
+	slog.Debug("tool call", "tool", "get_commit_diff_full", "sha", shortSHA(commitSHA), "reason", reason)
+
+	// Pre-flight check: can we fetch more?
+	canFetch, msg := t.costTracker.CanFetchMore()
+	if !canFetch {
+		slog.Debug("full diff fetch denied", "sha", shortSHA(commitSHA), "reason", msg)
+		return map[string]any{
+			"error":   msg,
+			"message": "Cannot fetch more diffs. Consider summarizing based on commit messages alone.",
+		}, nil
+	}
+
+	// Fetch the full unfiltered diff
+	diff, err := git.GetCommitDiffFull(t.repoPath, commitSHA)
+	if err != nil {
+		slog.Debug("full diff fetch error", "sha", shortSHA(commitSHA), "error", err)
+		return map[string]any{
+			"error":      fmt.Sprintf("Error fetching full diff: %v", err),
+			"commit_sha": commitSHA,
+		}, nil
+	}
+
+	// Check size limit
+	if len(diff) > t.costTracker.GetMaxDiffSizeBytes() {
+		slog.Debug("full diff too large", "sha", shortSHA(commitSHA), "size", len(diff), "max", t.costTracker.GetMaxDiffSizeBytes())
+		return map[string]any{
+			"error":      "Diff too large",
+			"commit_sha": commitSHA,
+			"size_bytes": len(diff),
+			"max_bytes":  t.costTracker.GetMaxDiffSizeBytes(),
+			"message":    "The commit involves extensive changes. Consider this when summarizing.",
+		}, nil
+	}
+
+	// Record the fetch
+	t.costTracker.RecordDiffFetch(commitSHA, len(diff), "full: "+reason)
+
+	lines := strings.Count(diff, "\n")
+	slog.Debug("full diff fetched", "sha", shortSHA(commitSHA), "bytes", len(diff), "lines", lines)
+
+	return map[string]any{
+		"commit_sha": commitSHA,
+		"diff":       diff,
+		"size_bytes": len(diff),
+		"reason":     reason,
+		"note":       "This is the complete unfiltered diff including vendor/node_modules/lock files",
 	}, nil
 }
 

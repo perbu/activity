@@ -80,6 +80,7 @@ func (a *Analyzer) createAnalyzerAgent(ctx context.Context, repoPath string, cos
 
 	// Create tools
 	diffTool := NewGetCommitDiffTool(repoPath, costTracker)
+	diffFullTool := NewGetCommitDiffFullTool(repoPath, costTracker)
 	msgTool := NewGetFullCommitMessageTool(repoPath)
 	authorTool := NewGetAuthorStatsTool(repoPath)
 
@@ -92,7 +93,7 @@ func (a *Analyzer) createAnalyzerAgent(ctx context.Context, repoPath string, cos
 		Description: "Analyzes git commits and provides summaries",
 		Model:       geminiModel,
 		Instruction: fmt.Sprintf(systemPrompt, a.config.LLM.MaxDiffFetches),
-		Tools:       []tool.Tool{diffTool, msgTool, authorTool},
+		Tools:       []tool.Tool{diffTool, diffFullTool, msgTool, authorTool},
 	}
 
 	// Create the agent
