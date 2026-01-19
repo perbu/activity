@@ -17,7 +17,7 @@ import (
 )
 
 // buildAgentPrompt creates the user prompt for the agent
-func buildAgentPrompt(repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, maxMessageLength int) string {
+func buildAgentPrompt(repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, maxMessageLength int, previousSummary string) string {
 	var sb strings.Builder
 
 	sb.WriteString(fmt.Sprintf("Repository: %s\n", repo.Name))
@@ -66,6 +66,13 @@ func buildAgentPrompt(repo *db.Repository, commits []git.Commit, branchActivity 
 		sb.WriteString("\nInclude a brief mention of this parallel work in your summary.\n\n")
 	}
 
+	// Include previous week's summary for context
+	if previousSummary != "" {
+		sb.WriteString("## Previous Week's Summary (for context)\n")
+		sb.WriteString(previousSummary)
+		sb.WriteString("\n\nUse this context to maintain narrative continuity and reference ongoing work where relevant.\n\n")
+	}
+
 	sb.WriteString("Please analyze these commits and provide a summary.\n")
 	return sb.String()
 }
@@ -101,7 +108,7 @@ func (a *Analyzer) createAnalyzerAgent(ctx context.Context, repoPath string, cos
 }
 
 // analyzeWithAgent performs commit analysis using an ADK agent
-func (a *Analyzer) analyzeWithAgent(ctx context.Context, repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity) (string, *CostTracker, error) {
+func (a *Analyzer) analyzeWithAgent(ctx context.Context, repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, previousSummary string) (string, *CostTracker, error) {
 	// Create cost tracker
 	costTracker := NewCostTracker(
 		a.config.LLM.MaxDiffFetches,
@@ -116,7 +123,7 @@ func (a *Analyzer) analyzeWithAgent(ctx context.Context, repo *db.Repository, co
 	}
 
 	// Build user prompt
-	userPrompt := buildAgentPrompt(repo, commits, branchActivity, a.config.LLM.MaxMessageLength)
+	userPrompt := buildAgentPrompt(repo, commits, branchActivity, a.config.LLM.MaxMessageLength, previousSummary)
 
 	slog.Debug("agent starting analysis", "repo", repo.Name, "commits", len(commits))
 

@@ -31,25 +31,26 @@ func New(llmClient *llm.Client, database *db.DB, cfg *config.Config) *Analyzer {
 
 // AnalyzeCommits analyzes a range of commits and returns a summary
 // Routes to either Phase 2 (simple LLM) or Phase 3 (agent) based on config
-func (a *Analyzer) AnalyzeCommits(ctx context.Context, repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity) (string, error) {
+// previousSummary provides context from the previous week's report for narrative continuity
+func (a *Analyzer) AnalyzeCommits(ctx context.Context, repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, previousSummary string) (string, error) {
 	if len(commits) == 0 {
 		return "No new commits to analyze.", nil
 	}
 
 	// Route to agent-based or simple analyzer
 	if a.config.LLM.UseAgent {
-		summary, _, err := a.analyzeWithAgent(ctx, repo, commits, branchActivity)
+		summary, _, err := a.analyzeWithAgent(ctx, repo, commits, branchActivity, previousSummary)
 		return summary, err
 	}
 
 	// Fall back to Phase 2 simple analyzer
-	return a.analyzeWithSimpleLLM(ctx, repo, commits, branchActivity)
+	return a.analyzeWithSimpleLLM(ctx, repo, commits, branchActivity, previousSummary)
 }
 
 // analyzeWithSimpleLLM performs simple LLM-based analysis (Phase 2)
-func (a *Analyzer) analyzeWithSimpleLLM(ctx context.Context, repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity) (string, error) {
+func (a *Analyzer) analyzeWithSimpleLLM(ctx context.Context, repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, previousSummary string) (string, error) {
 	// Build prompt from commits
-	prompt := buildAnalysisPrompt(repo, commits, branchActivity, a.config)
+	prompt := buildAnalysisPrompt(repo, commits, branchActivity, a.config, previousSummary)
 
 	// Call LLM
 	summary, err := a.llmClient.GenerateText(ctx, prompt)
@@ -61,7 +62,8 @@ func (a *Analyzer) analyzeWithSimpleLLM(ctx context.Context, repo *db.Repository
 }
 
 // AnalyzeAndSave performs analysis and saves to database
-func (a *Analyzer) AnalyzeAndSave(ctx context.Context, repo *db.Repository, fromSHA, toSHA string, commits []git.Commit, branchActivity []git.BranchActivity) (*db.ActivityRun, error) {
+// previousSummary provides context from the previous week's report for narrative continuity
+func (a *Analyzer) AnalyzeAndSave(ctx context.Context, repo *db.Repository, fromSHA, toSHA string, commits []git.Commit, branchActivity []git.BranchActivity, previousSummary string) (*db.ActivityRun, error) {
 	// Create activity run record
 	run, err := a.db.CreateActivityRun(repo.ID, fromSHA, toSHA)
 	if err != nil {
@@ -86,7 +88,7 @@ func (a *Analyzer) AnalyzeAndSave(ctx context.Context, repo *db.Repository, from
 	if a.config.LLM.UseAgent {
 		// Use agent analyzer and capture cost tracking
 		var costTracker *CostTracker
-		summary, costTracker, err = a.analyzeWithAgent(ctx, repo, commits, branchActivity)
+		summary, costTracker, err = a.analyzeWithAgent(ctx, repo, commits, branchActivity, previousSummary)
 		if err != nil {
 			return nil, fmt.Errorf("failed to analyze commits with agent: %w", err)
 		}
@@ -101,7 +103,7 @@ func (a *Analyzer) AnalyzeAndSave(ctx context.Context, repo *db.Repository, from
 		metadata["agent_estimated_tokens"] = costTracker.GetEstimatedTokens()
 	} else {
 		// Use simple LLM analyzer
-		summary, err = a.analyzeWithSimpleLLM(ctx, repo, commits, branchActivity)
+		summary, err = a.analyzeWithSimpleLLM(ctx, repo, commits, branchActivity, previousSummary)
 		if err != nil {
 			return nil, fmt.Errorf("failed to analyze commits: %w", err)
 		}
@@ -122,7 +124,7 @@ func (a *Analyzer) AnalyzeAndSave(ctx context.Context, repo *db.Repository, from
 }
 
 // buildAnalysisPrompt creates the prompt for LLM analysis
-func buildAnalysisPrompt(repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, cfg *config.Config) string {
+func buildAnalysisPrompt(repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, cfg *config.Config, previousSummary string) string {
 	var sb strings.Builder
 
 	sb.WriteString("You are analyzing git commits for a software project.\n\n")
@@ -188,6 +190,13 @@ func buildAnalysisPrompt(repo *db.Repository, commits []git.Commit, branchActivi
 			sb.WriteString(")\n")
 		}
 		sb.WriteString("\nInclude a brief mention of this parallel work in your summary.\n\n")
+	}
+
+	// Include previous week's summary for context
+	if previousSummary != "" {
+		sb.WriteString("## Previous Week's Summary (for context)\n")
+		sb.WriteString(previousSummary)
+		sb.WriteString("\n\nUse this context to maintain narrative continuity and reference ongoing work where relevant.\n\n")
 	}
 
 	// Use configured prompt (or default)

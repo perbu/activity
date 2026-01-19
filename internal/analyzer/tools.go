@@ -114,7 +114,7 @@ func (t *GetCommitDiffTool) Run(ctx tool.Context, args any) (map[string]any, err
 	}
 
 	// Fetch the diff
-	diff, err := git.GetCommitDiff(t.repoPath, commitSHA)
+	result, err := git.GetCommitDiff(t.repoPath, commitSHA)
 	if err != nil {
 		slog.Debug("diff fetch error", "sha", shortSHA(commitSHA), "error", err)
 		return map[string]any{
@@ -124,27 +124,27 @@ func (t *GetCommitDiffTool) Run(ctx tool.Context, args any) (map[string]any, err
 	}
 
 	// Check size limit
-	if len(diff) > t.costTracker.GetMaxDiffSizeBytes() {
-		slog.Debug("diff too large", "sha", shortSHA(commitSHA), "size", len(diff), "max", t.costTracker.GetMaxDiffSizeBytes())
+	if len(result.Diff) > t.costTracker.GetMaxDiffSizeBytes() {
+		slog.Debug("diff too large", "sha", shortSHA(commitSHA), "size", len(result.Diff), "max", t.costTracker.GetMaxDiffSizeBytes())
 		return map[string]any{
 			"error":      "Diff too large",
 			"commit_sha": commitSHA,
-			"size_bytes": len(diff),
+			"size_bytes": len(result.Diff),
 			"max_bytes":  t.costTracker.GetMaxDiffSizeBytes(),
 			"message":    "The commit likely involves extensive changes. Consider this when summarizing.",
 		}, nil
 	}
 
 	// Record the fetch
-	t.costTracker.RecordDiffFetch(commitSHA, len(diff), reason)
+	t.costTracker.RecordDiffFetch(commitSHA, len(result.Diff), reason)
 
-	lines := strings.Count(diff, "\n")
-	slog.Debug("diff fetched", "sha", shortSHA(commitSHA), "bytes", len(diff), "lines", lines)
+	lines := strings.Count(result.Diff, "\n")
+	slog.Debug("diff fetched", "sha", shortSHA(commitSHA), "bytes", len(result.Diff), "lines", lines, "suppressed", result.SuppressedLines)
 
 	return map[string]any{
 		"commit_sha": commitSHA,
-		"diff":       diff,
-		"size_bytes": len(diff),
+		"diff":       result.Diff,
+		"size_bytes": len(result.Diff),
 		"reason":     reason,
 	}, nil
 }

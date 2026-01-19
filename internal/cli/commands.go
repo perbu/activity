@@ -125,7 +125,8 @@ type ReportCmd struct {
 
 // ReportGenerateCmd generates weekly reports
 type ReportGenerateCmd struct {
-	Repo  string `arg:"" help:"Repository name"`
+	Repo  string `arg:"" optional:"" help:"Repository name"`
+	All   bool   `help:"Generate reports for all repositories"`
 	Week  string `help:"Generate report for specific ISO week (e.g., 2026-W02)"`
 	Since string `help:"Backfill all weeks since date (e.g., 2025-01-01)"`
 	Force bool   `help:"Regenerate existing reports"`

@@ -103,8 +103,8 @@ func analyzeRepository(ctx *Context, name, since, until string, n, limit int) er
 		// Create analyzer
 		llmAnalyzer := analyzer.New(llmClient, ctx.DB, ctx.Config)
 
-		// Analyze and save (no branch activity for ad-hoc analysis)
-		run, err := llmAnalyzer.AnalyzeAndSave(context.Background(), repo, fromSHA, toSHA, commits, nil)
+		// Analyze and save (no branch activity or previous summary for ad-hoc analysis)
+		run, err := llmAnalyzer.AnalyzeAndSave(context.Background(), repo, fromSHA, toSHA, commits, nil, "")
 		if err != nil {
 			slog.Warn("Analysis failed, falling back to git log", "error", err)
 			// Fall through to show commits

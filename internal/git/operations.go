@@ -124,11 +124,17 @@ var defaultDiffExcludes = []string{
 	":(exclude)composer.lock",
 }
 
+// DiffResult contains the diff content and metadata about filtering
+type DiffResult struct {
+	Diff            string
+	SuppressedLines int
+}
+
 // GetCommitDiff returns the diff for a specific commit with vendor/lock files filtered out.
 // Vendor directories (vendor/, node_modules/) and lock files are excluded by default.
 // The response includes a note showing how many lines were suppressed.
 // Use GetCommitDiffFull if you need the complete unfiltered diff.
-func GetCommitDiff(repoPath, sha string) (string, error) {
+func GetCommitDiff(repoPath, sha string) (*DiffResult, error) {
 	// Get filtered diff (excluding vendor/node_modules/lock files)
 	args := []string{"-C", repoPath, "show", "--format=", sha, "--"}
 	args = append(args, defaultDiffExcludes...)
@@ -138,7 +144,7 @@ func GetCommitDiff(repoPath, sha string) (string, error) {
 	filteredCmd.Stderr = &filteredErr
 
 	if err := filteredCmd.Run(); err != nil {
-		return "", fmt.Errorf("git show (filtered) failed: %w: %s", err, filteredErr.String())
+		return nil, fmt.Errorf("git show (filtered) failed: %w: %s", err, filteredErr.String())
 	}
 
 	// Get full diff to count suppressed lines
@@ -148,7 +154,7 @@ func GetCommitDiff(repoPath, sha string) (string, error) {
 	fullCmd.Stderr = &fullErr
 
 	if err := fullCmd.Run(); err != nil {
-		return "", fmt.Errorf("git show (full) failed: %w: %s", err, fullErr.String())
+		return nil, fmt.Errorf("git show (full) failed: %w: %s", err, fullErr.String())
 	}
 
 	filtered := filteredOut.String()
@@ -156,12 +162,19 @@ func GetCommitDiff(repoPath, sha string) (string, error) {
 
 	filteredLines := strings.Count(filtered, "\n")
 	fullLines := strings.Count(full, "\n")
+	suppressed := fullLines - filteredLines
 
-	if suppressed := fullLines - filteredLines; suppressed > 0 {
-		return fmt.Sprintf("%s\n[%d lines suppressed from vendor/node_modules/lock files]\n",
-			filtered, suppressed), nil
+	result := &DiffResult{
+		SuppressedLines: suppressed,
 	}
-	return filtered, nil
+
+	if suppressed > 0 {
+		result.Diff = fmt.Sprintf("%s\n[%d lines suppressed from vendor/node_modules/lock files]\n",
+			filtered, suppressed)
+	} else {
+		result.Diff = filtered
+	}
+	return result, nil
 }
 
 // GetCommitDiffFull returns the complete diff for a commit without any filtering.

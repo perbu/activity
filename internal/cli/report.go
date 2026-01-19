@@ -24,12 +24,49 @@ func (c *ReportGenerateCmd) Run(ctx *Context) error {
 	if c.Week != "" && c.Since != "" {
 		return fmt.Errorf("--week and --since are mutually exclusive")
 	}
-
-	// Get repository
-	repo, err := ctx.DB.GetRepositoryByName(c.Repo)
-	if err != nil {
-		return fmt.Errorf("repository not found: %s", c.Repo)
+	if c.All && c.Repo != "" {
+		return fmt.Errorf("--all and repository name are mutually exclusive")
 	}
+	if !c.All && c.Repo == "" {
+		return fmt.Errorf("requires a repository name or --all flag")
+	}
+
+	// Get repositories to process
+	var repos []*db.Repository
+	if c.All {
+		activeOnly := true
+		var err error
+		repos, err = ctx.DB.ListRepositories(&activeOnly)
+		if err != nil {
+			return fmt.Errorf("failed to list repositories: %w", err)
+		}
+		if len(repos) == 0 {
+			return fmt.Errorf("no active repositories found")
+		}
+	} else {
+		repo, err := ctx.DB.GetRepositoryByName(c.Repo)
+		if err != nil {
+			return fmt.Errorf("repository not found: %s", c.Repo)
+		}
+		repos = []*db.Repository{repo}
+	}
+
+	// Process each repository
+	for i, repo := range repos {
+		if i > 0 {
+			fmt.Println()
+		}
+		if err := c.generateForRepo(ctx, repo); err != nil {
+			slog.Error("Failed to generate reports", "repo", repo.Name, "error", err)
+			continue
+		}
+	}
+
+	return nil
+}
+
+// generateForRepo generates reports for a single repository
+func (c *ReportGenerateCmd) generateForRepo(ctx *Context, repo *db.Repository) error {
 
 	// Determine weeks to generate
 	var weeksToGenerate [][2]int
@@ -155,6 +192,18 @@ func (c *ReportGenerateCmd) Run(ctx *Context) error {
 	return nil
 }
 
+// previousWeek returns the previous ISO week, handling year boundaries
+func previousWeek(year, week int) (int, int) {
+	if week == 1 {
+		// Go back to last week of previous year
+		// Use time package to find the last week of previous year
+		prevYearEnd := time.Date(year-1, 12, 28, 0, 0, 0, 0, time.UTC)
+		prevYear, prevWeek := prevYearEnd.ISOWeek()
+		return prevYear, prevWeek
+	}
+	return year, week - 1
+}
+
 func generateWeeklyReport(ctx *Context, llmAnalyzer *analyzer.Analyzer, repo *db.Repository,
 	year, week int, commits []git.Commit, branchActivity []git.BranchActivity, exists bool) (*db.WeeklyReport, error) {
 
@@ -167,8 +216,16 @@ func generateWeeklyReport(ctx *Context, llmAnalyzer *analyzer.Analyzer, repo *db
 		fromSHA = commits[len(commits)-1].SHA
 	}
 
+	// Fetch previous week's report for context
+	prevYear, prevWeek := previousWeek(year, week)
+	var previousSummary string
+	prevReport, err := ctx.DB.GetWeeklyReportByRepoAndWeek(repo.ID, prevYear, prevWeek)
+	if err == nil && prevReport != nil && prevReport.Summary.Valid {
+		previousSummary = prevReport.Summary.String
+	}
+
 	// Analyze commits
-	run, err := llmAnalyzer.AnalyzeAndSave(context.Background(), repo, fromSHA, toSHA, commits, branchActivity)
+	run, err := llmAnalyzer.AnalyzeAndSave(context.Background(), repo, fromSHA, toSHA, commits, branchActivity, previousSummary)
 	if err != nil {
 		return nil, fmt.Errorf("analysis failed: %w", err)
 	}
