@@ -70,7 +70,7 @@ func updateRepository(ctx *Context, name string, analyze bool) error {
 		return fmt.Errorf("failed to get current SHA: %w", err)
 	}
 
-	// Pull updates (with auth if private)
+	// Fetch all branches and pull updates (with auth if private)
 	if repo.Private {
 		if ctx.TokenProvider == nil {
 			return fmt.Errorf("repository '%s' is private but no GitHub App is configured", name)
@@ -79,10 +79,18 @@ func updateRepository(ctx *Context, name string, analyze bool) error {
 		if err != nil {
 			return fmt.Errorf("failed to get GitHub token: %w", err)
 		}
+		// Fetch all remote branches first
+		if err := git.FetchAllWithAuth(repo.LocalPath, repo.URL, token); err != nil {
+			slog.Warn("Failed to fetch all branches", "error", err)
+		}
 		if err := git.PullWithAuth(repo.LocalPath, repo.URL, token); err != nil {
 			return fmt.Errorf("failed to pull: %w", err)
 		}
 	} else {
+		// Fetch all remote branches first
+		if err := git.FetchAll(repo.LocalPath); err != nil {
+			slog.Warn("Failed to fetch all branches", "error", err)
+		}
 		if err := git.Pull(repo.LocalPath); err != nil {
 			return fmt.Errorf("failed to pull: %w", err)
 		}
@@ -176,8 +184,15 @@ func generateLastWeekReport(ctx *Context, repo *db.Repository) error {
 		return nil
 	}
 
+	// Get feature branch activity for this week
+	branchActivity, err := git.GetFeatureBranchActivity(repo.LocalPath, repo.Branch, year, week)
+	if err != nil {
+		slog.Warn("Failed to get branch activity", "week", weekStr, "error", err)
+		branchActivity = nil
+	}
+
 	if !ctx.Quiet {
-		slog.Info("Generating weekly report", "week", weekStr, "commits", len(commits))
+		slog.Info("Generating weekly report", "week", weekStr, "commits", len(commits), "branches", len(branchActivity))
 	}
 
 	// Initialize LLM client
@@ -190,7 +205,7 @@ func generateLastWeekReport(ctx *Context, repo *db.Repository) error {
 	// Create analyzer and generate report
 	llmAnalyzer := analyzer.New(llmClient, ctx.DB, ctx.Config)
 
-	_, err = generateWeeklyReport(ctx, llmAnalyzer, repo, year, week, commits, false)
+	_, err = generateWeeklyReport(ctx, llmAnalyzer, repo, year, week, commits, branchActivity, false)
 	if err != nil {
 		return fmt.Errorf("failed to generate report: %w", err)
 	}

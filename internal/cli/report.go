@@ -54,6 +54,27 @@ func (c *ReportGenerateCmd) Run(ctx *Context) error {
 		slog.Info("Generating reports", "count", len(weeksToGenerate), "repo", repo.Name)
 	}
 
+	// Fetch all remote branches to ensure we have the latest branch refs
+	if !ctx.Quiet {
+		slog.Debug("Fetching all remote branches", "repo", repo.Name)
+	}
+	if repo.Private {
+		if ctx.TokenProvider == nil {
+			return fmt.Errorf("repository '%s' is private but no GitHub App is configured", repo.Name)
+		}
+		token, err := ctx.TokenProvider.GetToken()
+		if err != nil {
+			return fmt.Errorf("failed to get GitHub token: %w", err)
+		}
+		if err := git.FetchAllWithAuth(repo.LocalPath, repo.URL, token); err != nil {
+			slog.Warn("Failed to fetch all branches", "error", err)
+		}
+	} else {
+		if err := git.FetchAll(repo.LocalPath); err != nil {
+			slog.Warn("Failed to fetch all branches", "error", err)
+		}
+	}
+
 	// Initialize LLM client
 	llmClient, err := llm.NewClient(context.Background(), ctx.Config)
 	if err != nil {
@@ -102,12 +123,20 @@ func (c *ReportGenerateCmd) Run(ctx *Context) error {
 			continue
 		}
 
-		// Generate report
-		if !ctx.Quiet {
-			slog.Info("Analyzing commits", "week", weekStr, "commits", len(commits))
+		// Get feature branch activity for this week
+		branchActivity, err := git.GetFeatureBranchActivity(repo.LocalPath, repo.Branch, year, wk)
+		if err != nil {
+			slog.Warn("Failed to get branch activity", "week", weekStr, "error", err)
+			// Continue without branch activity
+			branchActivity = nil
 		}
 
-		report, err := generateWeeklyReport(ctx, llmAnalyzer, repo, year, wk, commits, exists)
+		// Generate report
+		if !ctx.Quiet {
+			slog.Info("Analyzing commits", "week", weekStr, "commits", len(commits), "branches", len(branchActivity))
+		}
+
+		report, err := generateWeeklyReport(ctx, llmAnalyzer, repo, year, wk, commits, branchActivity, exists)
 		if err != nil {
 			slog.Error("Failed to generate report", "week", weekStr, "error", err)
 			continue
@@ -127,7 +156,7 @@ func (c *ReportGenerateCmd) Run(ctx *Context) error {
 }
 
 func generateWeeklyReport(ctx *Context, llmAnalyzer *analyzer.Analyzer, repo *db.Repository,
-	year, week int, commits []git.Commit, exists bool) (*db.WeeklyReport, error) {
+	year, week int, commits []git.Commit, branchActivity []git.BranchActivity, exists bool) (*db.WeeklyReport, error) {
 
 	weekStart, weekEnd := git.ISOWeekBounds(year, week)
 
@@ -139,7 +168,7 @@ func generateWeeklyReport(ctx *Context, llmAnalyzer *analyzer.Analyzer, repo *db
 	}
 
 	// Analyze commits
-	run, err := llmAnalyzer.AnalyzeAndSave(context.Background(), repo, fromSHA, toSHA, commits)
+	run, err := llmAnalyzer.AnalyzeAndSave(context.Background(), repo, fromSHA, toSHA, commits, branchActivity)
 	if err != nil {
 		return nil, fmt.Errorf("analysis failed: %w", err)
 	}

@@ -31,25 +31,25 @@ func New(llmClient *llm.Client, database *db.DB, cfg *config.Config) *Analyzer {
 
 // AnalyzeCommits analyzes a range of commits and returns a summary
 // Routes to either Phase 2 (simple LLM) or Phase 3 (agent) based on config
-func (a *Analyzer) AnalyzeCommits(ctx context.Context, repo *db.Repository, commits []git.Commit) (string, error) {
+func (a *Analyzer) AnalyzeCommits(ctx context.Context, repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity) (string, error) {
 	if len(commits) == 0 {
 		return "No new commits to analyze.", nil
 	}
 
 	// Route to agent-based or simple analyzer
 	if a.config.LLM.UseAgent {
-		summary, _, err := a.analyzeWithAgent(ctx, repo, commits)
+		summary, _, err := a.analyzeWithAgent(ctx, repo, commits, branchActivity)
 		return summary, err
 	}
 
 	// Fall back to Phase 2 simple analyzer
-	return a.analyzeWithSimpleLLM(ctx, repo, commits)
+	return a.analyzeWithSimpleLLM(ctx, repo, commits, branchActivity)
 }
 
 // analyzeWithSimpleLLM performs simple LLM-based analysis (Phase 2)
-func (a *Analyzer) analyzeWithSimpleLLM(ctx context.Context, repo *db.Repository, commits []git.Commit) (string, error) {
+func (a *Analyzer) analyzeWithSimpleLLM(ctx context.Context, repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity) (string, error) {
 	// Build prompt from commits
-	prompt := buildAnalysisPrompt(repo, commits, a.config)
+	prompt := buildAnalysisPrompt(repo, commits, branchActivity, a.config)
 
 	// Call LLM
 	summary, err := a.llmClient.GenerateText(ctx, prompt)
@@ -61,7 +61,7 @@ func (a *Analyzer) analyzeWithSimpleLLM(ctx context.Context, repo *db.Repository
 }
 
 // AnalyzeAndSave performs analysis and saves to database
-func (a *Analyzer) AnalyzeAndSave(ctx context.Context, repo *db.Repository, fromSHA, toSHA string, commits []git.Commit) (*db.ActivityRun, error) {
+func (a *Analyzer) AnalyzeAndSave(ctx context.Context, repo *db.Repository, fromSHA, toSHA string, commits []git.Commit, branchActivity []git.BranchActivity) (*db.ActivityRun, error) {
 	// Create activity run record
 	run, err := a.db.CreateActivityRun(repo.ID, fromSHA, toSHA)
 	if err != nil {
@@ -86,7 +86,7 @@ func (a *Analyzer) AnalyzeAndSave(ctx context.Context, repo *db.Repository, from
 	if a.config.LLM.UseAgent {
 		// Use agent analyzer and capture cost tracking
 		var costTracker *CostTracker
-		summary, costTracker, err = a.analyzeWithAgent(ctx, repo, commits)
+		summary, costTracker, err = a.analyzeWithAgent(ctx, repo, commits, branchActivity)
 		if err != nil {
 			return nil, fmt.Errorf("failed to analyze commits with agent: %w", err)
 		}
@@ -101,7 +101,7 @@ func (a *Analyzer) AnalyzeAndSave(ctx context.Context, repo *db.Repository, from
 		metadata["agent_estimated_tokens"] = costTracker.GetEstimatedTokens()
 	} else {
 		// Use simple LLM analyzer
-		summary, err = a.analyzeWithSimpleLLM(ctx, repo, commits)
+		summary, err = a.analyzeWithSimpleLLM(ctx, repo, commits, branchActivity)
 		if err != nil {
 			return nil, fmt.Errorf("failed to analyze commits: %w", err)
 		}
@@ -122,7 +122,7 @@ func (a *Analyzer) AnalyzeAndSave(ctx context.Context, repo *db.Repository, from
 }
 
 // buildAnalysisPrompt creates the prompt for LLM analysis
-func buildAnalysisPrompt(repo *db.Repository, commits []git.Commit, cfg *config.Config) string {
+func buildAnalysisPrompt(repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, cfg *config.Config) string {
 	var sb strings.Builder
 
 	sb.WriteString("You are analyzing git commits for a software project.\n\n")
@@ -169,6 +169,25 @@ func buildAnalysisPrompt(repo *db.Repository, commits []git.Commit, cfg *config.
 
 	if len(commits) > maxCommits {
 		sb.WriteString(fmt.Sprintf("... and %d more commits\n\n", len(commits)-maxCommits))
+	}
+
+	// Include branch activity if present
+	if len(branchActivity) > 0 {
+		sb.WriteString("## Other Branch Activity\n")
+		sb.WriteString("The following feature branches had commits this week that haven't been merged to the main branch:\n")
+		for _, ba := range branchActivity {
+			sb.WriteString(fmt.Sprintf("- %s: %d commits (", ba.BranchName, ba.CommitCount))
+			first := true
+			for author, count := range ba.AuthorCounts {
+				if !first {
+					sb.WriteString(", ")
+				}
+				sb.WriteString(fmt.Sprintf("%s: %d", author, count))
+				first = false
+			}
+			sb.WriteString(")\n")
+		}
+		sb.WriteString("\nInclude a brief mention of this parallel work in your summary.\n\n")
 	}
 
 	// Use configured prompt (or default)

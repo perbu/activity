@@ -17,7 +17,7 @@ import (
 )
 
 // buildAgentPrompt creates the user prompt for the agent
-func buildAgentPrompt(repo *db.Repository, commits []git.Commit, maxMessageLength int) string {
+func buildAgentPrompt(repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, maxMessageLength int) string {
 	var sb strings.Builder
 
 	sb.WriteString(fmt.Sprintf("Repository: %s\n", repo.Name))
@@ -45,6 +45,25 @@ func buildAgentPrompt(repo *db.Repository, commits []git.Commit, maxMessageLengt
 			sb.WriteString(" [truncated - use get_full_commit_message for complete text]")
 		}
 		sb.WriteString("\n\n")
+	}
+
+	// Include branch activity if present
+	if len(branchActivity) > 0 {
+		sb.WriteString("## Other Branch Activity\n")
+		sb.WriteString("The following feature branches had commits this week that haven't been merged to the main branch:\n")
+		for _, ba := range branchActivity {
+			sb.WriteString(fmt.Sprintf("- %s: %d commits (", ba.BranchName, ba.CommitCount))
+			first := true
+			for author, count := range ba.AuthorCounts {
+				if !first {
+					sb.WriteString(", ")
+				}
+				sb.WriteString(fmt.Sprintf("%s: %d", author, count))
+				first = false
+			}
+			sb.WriteString(")\n")
+		}
+		sb.WriteString("\nInclude a brief mention of this parallel work in your summary.\n\n")
 	}
 
 	sb.WriteString("Please analyze these commits and provide a summary.\n")
@@ -81,7 +100,7 @@ func (a *Analyzer) createAnalyzerAgent(ctx context.Context, repoPath string, cos
 }
 
 // analyzeWithAgent performs commit analysis using an ADK agent
-func (a *Analyzer) analyzeWithAgent(ctx context.Context, repo *db.Repository, commits []git.Commit) (string, *CostTracker, error) {
+func (a *Analyzer) analyzeWithAgent(ctx context.Context, repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity) (string, *CostTracker, error) {
 	// Create cost tracker
 	costTracker := NewCostTracker(
 		a.config.LLM.MaxDiffFetches,
@@ -96,7 +115,7 @@ func (a *Analyzer) analyzeWithAgent(ctx context.Context, repo *db.Repository, co
 	}
 
 	// Build user prompt
-	userPrompt := buildAgentPrompt(repo, commits, a.config.LLM.MaxMessageLength)
+	userPrompt := buildAgentPrompt(repo, commits, branchActivity, a.config.LLM.MaxMessageLength)
 
 	slog.Debug("agent starting analysis", "repo", repo.Name, "commits", len(commits))
 

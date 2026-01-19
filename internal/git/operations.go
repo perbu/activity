@@ -453,3 +453,145 @@ func injectToken(originalURL, token string) (string, error) {
 	// Insert x-access-token:TOKEN@ after https://
 	return "https://x-access-token:" + token + "@" + strings.TrimPrefix(originalURL, "https://"), nil
 }
+
+// FetchAll fetches all remote branches
+func FetchAll(repoPath string) error {
+	cmd := exec.Command("git", "-C", repoPath, "fetch", "--all", "--prune")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git fetch --all failed: %w: %s", err, stderr.String())
+	}
+
+	return nil
+}
+
+// FetchAllWithAuth fetches all remote branches using an authenticated URL
+func FetchAllWithAuth(repoPath, url, token string) error {
+	authURL, err := injectToken(url, token)
+	if err != nil {
+		return fmt.Errorf("failed to create authenticated URL: %w", err)
+	}
+
+	// Temporarily set the authenticated URL
+	if err := SetRemoteURL(repoPath, authURL); err != nil {
+		return fmt.Errorf("failed to set authenticated URL: %w", err)
+	}
+
+	// Fetch all
+	fetchErr := FetchAll(repoPath)
+
+	// Always restore the original URL, even if fetch failed
+	restoreErr := SetRemoteURL(repoPath, url)
+
+	if fetchErr != nil {
+		return fetchErr
+	}
+	if restoreErr != nil {
+		return fmt.Errorf("failed to restore remote URL: %w", restoreErr)
+	}
+
+	return nil
+}
+
+// BranchActivity represents activity on a single branch
+type BranchActivity struct {
+	BranchName   string
+	CommitCount  int
+	Authors      []string
+	AuthorCounts map[string]int
+}
+
+// GetFeatureBranchActivity returns commits on remote branches that aren't on the main branch
+// within the specified week
+func GetFeatureBranchActivity(repoPath, mainBranch string, year, week int) ([]BranchActivity, error) {
+	// Get week bounds for date filtering
+	start, end := ISOWeekBounds(year, week)
+	sinceStr := start.Format("2006-01-02")
+	untilStr := end.AddDate(0, 0, 1).Format("2006-01-02") // Add 1 day for inclusive end
+
+	// List remote branches
+	cmd := exec.Command("git", "-C", repoPath, "branch", "-r", "--format=%(refname:short)")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("git branch -r failed: %w: %s", err, stderr.String())
+	}
+
+	branches := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	if len(branches) == 0 || (len(branches) == 1 && branches[0] == "") {
+		return nil, nil
+	}
+
+	// Build the main branch ref (e.g., "origin/main")
+	mainRef := "origin/" + mainBranch
+
+	var activities []BranchActivity
+
+	for _, branch := range branches {
+		branch = strings.TrimSpace(branch)
+		if branch == "" {
+			continue
+		}
+
+		// Skip the main branch and HEAD pointer
+		if branch == mainRef || strings.HasSuffix(branch, "/HEAD") || strings.Contains(branch, "->") {
+			continue
+		}
+
+		// Get commits on this branch that aren't on main, within the date range
+		// Format: author name only
+		logCmd := exec.Command("git", "-C", repoPath, "log",
+			branch, "--not", mainRef,
+			"--since="+sinceStr, "--until="+untilStr,
+			"--format=%an")
+		var logOut, logErr bytes.Buffer
+		logCmd.Stdout = &logOut
+		logCmd.Stderr = &logErr
+
+		if err := logCmd.Run(); err != nil {
+			// Skip branches that fail (might be orphaned, etc.)
+			continue
+		}
+
+		output := strings.TrimSpace(logOut.String())
+		if output == "" {
+			continue // No commits in this date range
+		}
+
+		// Count commits by author
+		authorCounts := make(map[string]int)
+		lines := strings.Split(output, "\n")
+		for _, author := range lines {
+			author = strings.TrimSpace(author)
+			if author != "" {
+				authorCounts[author]++
+			}
+		}
+
+		if len(authorCounts) == 0 {
+			continue
+		}
+
+		// Build unique author list
+		var authors []string
+		for author := range authorCounts {
+			authors = append(authors, author)
+		}
+
+		// Strip "origin/" prefix from branch name for cleaner display
+		displayName := strings.TrimPrefix(branch, "origin/")
+
+		activities = append(activities, BranchActivity{
+			BranchName:   displayName,
+			CommitCount:  len(lines),
+			Authors:      authors,
+			AuthorCounts: authorCounts,
+		})
+	}
+
+	return activities, nil
+}
