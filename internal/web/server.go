@@ -2,7 +2,6 @@ package web
 
 import (
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	"github.com/perbu/activity/internal/db"
@@ -51,7 +50,6 @@ func (s *Server) registerRoutes() {
 // Start starts the HTTP server
 func (s *Server) Start() error {
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
-	slog.Info("starting web server", "address", "http://"+addr)
 	return http.ListenAndServe(addr, s.mux)
 }
 

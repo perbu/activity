@@ -33,7 +33,7 @@ go build .
 
 ## Docker
 
-Docker images are automatically built and pushed to GitHub Container Registry.
+Docker images are built and pushed to GitHub Container Registry on tagged releases.
 
 ```bash
 # Pull the latest image
@@ -58,9 +58,9 @@ docker run -v /path/to/data:/data \
 ```
 
 Available tags:
-- `latest` - Latest build from main branch
-- `v1.0.0` - Specific version tags
-- `sha-abc123` - Specific commit SHA
+- `latest` - Latest release
+- `1.0.0` - Specific version (from v1.0.0 tag)
+- `1.0` - Major.minor version
 
 ## Quick Start
 

@@ -1,9 +1,11 @@
 package main
 
 import (
+	_ "embed"
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/alecthomas/kong"
 	"github.com/joho/godotenv"
@@ -13,7 +15,8 @@ import (
 	"github.com/perbu/activity/internal/github"
 )
 
-var version = "dev"
+//go:embed .version
+var version string
 
 // setupLogger configures the global slog logger based on debug setting
 func setupLogger(debug bool) {
@@ -45,7 +48,7 @@ func run() error {
 		kong.Description("Git repository activity analyzer"),
 		kong.UsageOnError(),
 		kong.Vars{
-			"version": version,
+			"version": strings.TrimSpace(version),
 		},
 	)
 
@@ -67,6 +70,7 @@ func run() error {
 
 	// Set up slog based on debug setting
 	setupLogger(cfg.Debug)
+	slog.Info("starting activity", "version", strings.TrimSpace(version))
 
 	// Require data directory to be specified
 	if cfg.DataDir == "" {
