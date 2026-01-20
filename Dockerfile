@@ -18,6 +18,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o activity .
 # Runtime stage
 FROM alpine:latest
 
+LABEL org.opencontainers.image.source=https://github.com/perbu/activity
+LABEL org.opencontainers.image.description="AI-powered git commit analyzer"
+LABEL org.opencontainers.image.licenses=BSD-2-Clause
+
 RUN apk add --no-cache git ca-certificates
 
 # Create non-root user
