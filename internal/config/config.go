@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"gopkg.in/yaml.v3"
 )
@@ -19,10 +20,12 @@ type Config struct {
 
 // GitHubConfig represents GitHub App authentication configuration
 type GitHubConfig struct {
-	AppID          int64  `yaml:"app_id"`
-	InstallationID int64  `yaml:"installation_id"`
-	PrivateKeyPath string `yaml:"private_key_path"` // Path to PEM file
-	PrivateKeyEnv  string `yaml:"private_key_env"`  // Env var with PEM content
+	AppID             int64  `yaml:"app_id"`
+	AppIDEnv          string `yaml:"app_id_env"`           // Env var with App ID
+	InstallationID    int64  `yaml:"installation_id"`
+	InstallationIDEnv string `yaml:"installation_id_env"`  // Env var with Installation ID
+	PrivateKeyPath    string `yaml:"private_key_path"`     // Path to PEM file
+	PrivateKeyEnv     string `yaml:"private_key_env"`      // Env var with PEM content
 }
 
 // NewsletterConfig represents newsletter email configuration
@@ -80,6 +83,11 @@ func DefaultConfig() *Config {
 			FromEmail:      "activity@example.com",
 			FromName:       "Activity Digest",
 			SubjectPrefix:  "[Activity]",
+		},
+		GitHub: GitHubConfig{
+			AppIDEnv:          "GITHUB_APP_ID",
+			InstallationIDEnv: "GITHUB_INSTALLATION_ID",
+			PrivateKeyEnv:     "GITHUB_APP_PRIVATE_KEY",
 		},
 	}
 }
@@ -189,7 +197,37 @@ func (c *Config) GetSendGridAPIKey() string {
 
 // HasGitHubApp returns true if GitHub App authentication is configured
 func (c *Config) HasGitHubApp() bool {
-	return c.GitHub.AppID != 0 && c.GitHub.InstallationID != 0
+	return c.GetGitHubAppID() != 0 && c.GetGitHubInstallationID() != 0
+}
+
+// GetGitHubAppID returns the GitHub App ID, checking direct value first then env var
+func (c *Config) GetGitHubAppID() int64 {
+	if c.GitHub.AppID != 0 {
+		return c.GitHub.AppID
+	}
+	if c.GitHub.AppIDEnv != "" {
+		if val := os.Getenv(c.GitHub.AppIDEnv); val != "" {
+			if id, err := strconv.ParseInt(val, 10, 64); err == nil {
+				return id
+			}
+		}
+	}
+	return 0
+}
+
+// GetGitHubInstallationID returns the GitHub Installation ID, checking direct value first then env var
+func (c *Config) GetGitHubInstallationID() int64 {
+	if c.GitHub.InstallationID != 0 {
+		return c.GitHub.InstallationID
+	}
+	if c.GitHub.InstallationIDEnv != "" {
+		if val := os.Getenv(c.GitHub.InstallationIDEnv); val != "" {
+			if id, err := strconv.ParseInt(val, 10, 64); err == nil {
+				return id
+			}
+		}
+	}
+	return 0
 }
 
 // GetGitHubPrivateKey returns the GitHub App private key, checking file path first then env var

@@ -22,3 +22,16 @@ llm:
   # Optional: Custom prompts (leave blank to use defaults)
   # phase2_prompt: "Your custom Phase 2 prompt here"
   # agent_system_prompt: "Your custom agent instruction here"
+
+# GitHub App authentication (for private repositories)
+# Values can be set directly or via environment variables
+github:
+  # Direct values (takes precedence over env vars)
+  # app_id: 12345
+  # installation_id: 67890
+  # private_key_path: "~/.config/activity/github-app.pem"
+
+  # Environment variable names (defaults shown)
+  app_id_env: "GITHUB_APP_ID"
+  installation_id_env: "GITHUB_INSTALLATION_ID"
+  private_key_env: "GITHUB_APP_PRIVATE_KEY"

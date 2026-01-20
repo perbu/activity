@@ -92,7 +92,7 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("failed to get GitHub App private key: %w", err)
 		}
-		tokenProvider, err = github.NewTokenProvider(cfg.GitHub.AppID, cfg.GitHub.InstallationID, privateKey)
+		tokenProvider, err = github.NewTokenProvider(cfg.GetGitHubAppID(), cfg.GetGitHubInstallationID(), privateKey)
 		if err != nil {
 			return fmt.Errorf("failed to create GitHub token provider: %w", err)
 		}

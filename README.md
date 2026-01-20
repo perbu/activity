@@ -31,6 +31,37 @@ cd activity
 go build .
 ```
 
+## Docker
+
+Docker images are automatically built and pushed to GitHub Container Registry.
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/perbu/activity:latest
+
+# Run with environment variables
+docker run -v /path/to/data:/data \
+  -e GOOGLE_API_KEY=your-api-key \
+  ghcr.io/perbu/activity:latest \
+  --data-dir /data \
+  repo list
+
+# For private GitHub repositories, include GitHub App credentials
+docker run -v /path/to/data:/data \
+  -e GOOGLE_API_KEY=your-api-key \
+  -e GITHUB_APP_ID=123456 \
+  -e GITHUB_INSTALLATION_ID=789012 \
+  -e GITHUB_APP_PRIVATE_KEY="$(cat path/to/key.pem)" \
+  ghcr.io/perbu/activity:latest \
+  --data-dir /data \
+  analyze myrepo
+```
+
+Available tags:
+- `latest` - Latest build from main branch
+- `v1.0.0` - Specific version tags
+- `sha-abc123` - Specific commit SHA
+
 ## Quick Start
 
 1. Set your API key:

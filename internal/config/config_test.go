@@ -240,3 +240,115 @@ func TestGetSendGridAPIKey(t *testing.T) {
 		t.Errorf("GetSendGridAPIKey() with nothing configured = %q, want empty string", got)
 	}
 }
+
+func TestGetGitHubAppID(t *testing.T) {
+	// Test direct value takes precedence
+	cfg := &Config{
+		GitHub: GitHubConfig{
+			AppID:    12345,
+			AppIDEnv: "TEST_GITHUB_APP_ID",
+		},
+	}
+	os.Setenv("TEST_GITHUB_APP_ID", "99999")
+	defer os.Unsetenv("TEST_GITHUB_APP_ID")
+
+	if got := cfg.GetGitHubAppID(); got != 12345 {
+		t.Errorf("GetGitHubAppID() with direct value = %d, want 12345", got)
+	}
+
+	// Test env var fallback
+	cfg = &Config{
+		GitHub: GitHubConfig{
+			AppIDEnv: "TEST_GITHUB_APP_ID_FALLBACK",
+		},
+	}
+	os.Setenv("TEST_GITHUB_APP_ID_FALLBACK", "67890")
+	defer os.Unsetenv("TEST_GITHUB_APP_ID_FALLBACK")
+
+	if got := cfg.GetGitHubAppID(); got != 67890 {
+		t.Errorf("GetGitHubAppID() with env var = %d, want 67890", got)
+	}
+
+	// Test zero when nothing configured
+	cfg = &Config{
+		GitHub: GitHubConfig{},
+	}
+	if got := cfg.GetGitHubAppID(); got != 0 {
+		t.Errorf("GetGitHubAppID() with nothing configured = %d, want 0", got)
+	}
+
+	// Test invalid env var value
+	cfg = &Config{
+		GitHub: GitHubConfig{
+			AppIDEnv: "TEST_GITHUB_APP_ID_INVALID",
+		},
+	}
+	os.Setenv("TEST_GITHUB_APP_ID_INVALID", "not-a-number")
+	defer os.Unsetenv("TEST_GITHUB_APP_ID_INVALID")
+
+	if got := cfg.GetGitHubAppID(); got != 0 {
+		t.Errorf("GetGitHubAppID() with invalid env var = %d, want 0", got)
+	}
+}
+
+func TestGetGitHubInstallationID(t *testing.T) {
+	// Test direct value takes precedence
+	cfg := &Config{
+		GitHub: GitHubConfig{
+			InstallationID:    54321,
+			InstallationIDEnv: "TEST_GITHUB_INSTALLATION_ID",
+		},
+	}
+	os.Setenv("TEST_GITHUB_INSTALLATION_ID", "88888")
+	defer os.Unsetenv("TEST_GITHUB_INSTALLATION_ID")
+
+	if got := cfg.GetGitHubInstallationID(); got != 54321 {
+		t.Errorf("GetGitHubInstallationID() with direct value = %d, want 54321", got)
+	}
+
+	// Test env var fallback
+	cfg = &Config{
+		GitHub: GitHubConfig{
+			InstallationIDEnv: "TEST_GITHUB_INSTALLATION_ID_FALLBACK",
+		},
+	}
+	os.Setenv("TEST_GITHUB_INSTALLATION_ID_FALLBACK", "11111")
+	defer os.Unsetenv("TEST_GITHUB_INSTALLATION_ID_FALLBACK")
+
+	if got := cfg.GetGitHubInstallationID(); got != 11111 {
+		t.Errorf("GetGitHubInstallationID() with env var = %d, want 11111", got)
+	}
+
+	// Test zero when nothing configured
+	cfg = &Config{
+		GitHub: GitHubConfig{},
+	}
+	if got := cfg.GetGitHubInstallationID(); got != 0 {
+		t.Errorf("GetGitHubInstallationID() with nothing configured = %d, want 0", got)
+	}
+}
+
+func TestHasGitHubAppWithEnvVars(t *testing.T) {
+	// Test HasGitHubApp with env vars
+	cfg := &Config{
+		GitHub: GitHubConfig{
+			AppIDEnv:          "TEST_HAS_GITHUB_APP_ID",
+			InstallationIDEnv: "TEST_HAS_GITHUB_INSTALLATION_ID",
+		},
+	}
+
+	// Not configured yet
+	if cfg.HasGitHubApp() {
+		t.Error("HasGitHubApp() should be false when env vars not set")
+	}
+
+	// Set env vars
+	os.Setenv("TEST_HAS_GITHUB_APP_ID", "12345")
+	os.Setenv("TEST_HAS_GITHUB_INSTALLATION_ID", "67890")
+	defer os.Unsetenv("TEST_HAS_GITHUB_APP_ID")
+	defer os.Unsetenv("TEST_HAS_GITHUB_INSTALLATION_ID")
+
+	if !cfg.HasGitHubApp() {
+		t.Error("HasGitHubApp() should be true when env vars are set")
+	}
+}
