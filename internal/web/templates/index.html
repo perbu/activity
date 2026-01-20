@@ -20,7 +20,7 @@
         <tbody>
             {{range .Reports}}
             <tr>
-                <td><a href="/repos/{{.RepoName}}" class="cell-primary">{{.RepoName}}</a></td>
+                <td><a href="/reports/{{.ID}}">{{.RepoName}}</a></td>
                 <td><a href="/reports/{{.ID}}">{{.WeekLabel}}</a></td>
                 <td class="cell-secondary">{{.WeekStart}} - {{.WeekEnd}}</td>
                 <td class="cell-secondary"><span class="commit-count">{{.CommitCount}}</span></td>

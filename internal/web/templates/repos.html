@@ -21,9 +21,16 @@
         {{if .Description}}
         <div class="description">{{.Description}}</div>
         {{end}}
+        {{if .Sparkline}}
+        <div class="sparkline">
+            {{range .Sparkline}}
+            <div class="sparkline-bar" style="height: {{.Height}}%;" title="{{.Value}} commits"></div>
+            {{end}}
+        </div>
+        {{end}}
         <div class="stats-row">
             <span>{{.ReportCount}} reports</span>
-            <span>{{.LastReport}}</span>
+            <span>commits / week ({{len .Sparkline}}w)</span>
         </div>
     </div>
     {{end}}

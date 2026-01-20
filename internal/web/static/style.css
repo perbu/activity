@@ -487,6 +487,11 @@ tr:hover {
     color: var(--text-muted);
 }
 
+.footer-sep {
+    margin: 0 8px;
+    opacity: 0.5;
+}
+
 /* URL display */
 .url-display {
     color: var(--text-muted);
@@ -502,6 +507,28 @@ tr:hover {
     font-size: 12px;
     margin-top: 8px;
     line-height: 1.5;
+}
+
+/* Sparkline */
+.sparkline {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 28px;
+    margin-top: 12px;
+}
+
+.sparkline-bar {
+    flex: 1;
+    min-width: 3px;
+    background: var(--accent);
+    border-radius: 2px 2px 0 0;
+    opacity: 0.6;
+    transition: opacity 0.15s ease;
+}
+
+.sparkline-bar:hover {
+    opacity: 1;
 }
 
 /* Stats row */

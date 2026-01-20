@@ -15,7 +15,10 @@
         <span class="badge badge-inactive">inactive</span>
         {{end}}
     </div>
-    <p class="page-subtitle">{{.Repo.URL}}</p>
+    {{if .Repo.Description}}
+    <p class="page-subtitle">{{.Repo.Description}}</p>
+    {{end}}
+    <p class="page-subtitle cell-muted">{{.Repo.URL}}</p>
 </div>
 
 {{if .Years}}

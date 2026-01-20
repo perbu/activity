@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/perbu/activity/internal/db"
 	"github.com/perbu/activity/internal/git"
@@ -73,6 +74,7 @@ func (s *Server) handleRepoList(w http.ResponseWriter, r *http.Request) {
 			Description: repo.Description.String,
 			ReportCount: len(reports),
 			LastReport:  "No reports",
+			Sparkline:   buildSparkline(reports, 12),
 		}
 		if len(reports) > 0 {
 			summary.LastReport = reports[0].CreatedAt.Format("2006-01-02")
@@ -149,6 +151,7 @@ func (s *Server) handleRepoReports(w http.ResponseWriter, r *http.Request) {
 		URL:         repo.URL,
 		Branch:      repo.Branch,
 		Active:      repo.Active,
+		Description: repo.Description.String,
 		ReportCount: len(allReports),
 		LastReport:  "No reports",
 	}
@@ -262,6 +265,59 @@ func toReportSummary(r *db.WeeklyReport, repoName string) ReportSummary {
 		CreatedAt:   r.CreatedAt.Format("2006-01-02"),
 		Preview:     preview,
 	}
+}
+
+// buildSparkline builds a continuous timeline of commit counts for the last N weeks
+// Returns slice ordered oldest to newest, with zeros for weeks without reports
+func buildSparkline(reports []*db.WeeklyReport, weeks int) []SparklineBar {
+	// Build lookup map: "year-week" -> commit count
+	commitsByWeek := make(map[string]int)
+	for _, r := range reports {
+		key := git.FormatISOWeek(r.Year, r.Week)
+		commitsByWeek[key] = r.CommitCount
+	}
+
+	// Generate last N weeks from current week
+	currentYear, currentWeek := git.CurrentISOWeek()
+	weekList := make([][2]int, weeks)
+	year, week := currentYear, currentWeek
+	for i := weeks - 1; i >= 0; i-- {
+		weekList[i] = [2]int{year, week}
+		// Go back one week
+		week--
+		if week < 1 {
+			year--
+			// ISO weeks: most years have 52, some have 53
+			// Use Dec 28 to find last week of previous year
+			dec28 := time.Date(year, 12, 28, 0, 0, 0, 0, time.UTC)
+			_, week = dec28.ISOWeek()
+		}
+	}
+
+	// Build sparkline data
+	counts := make([]int, weeks)
+	maxVal := 1
+	for i, yw := range weekList {
+		key := git.FormatISOWeek(yw[0], yw[1])
+		counts[i] = commitsByWeek[key]
+		if counts[i] > maxVal {
+			maxVal = counts[i]
+		}
+	}
+
+	// Convert to bars with heights
+	sparkline := make([]SparklineBar, weeks)
+	for i, count := range counts {
+		height := (count * 100) / maxVal
+		if count > 0 && height < 5 {
+			height = 5 // minimum visible height for non-zero values
+		}
+		sparkline[i] = SparklineBar{
+			Value:  count,
+			Height: height,
+		}
+	}
+	return sparkline
 }
 
 // toReportDetail converts a db.WeeklyReport to a ReportDetail view model
