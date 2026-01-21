@@ -1,0 +1,148 @@
+{{define "content"}}
+<div class="admin-actions">
+    <div class="page-header">
+        <h1>Manual Actions</h1>
+        <a href="/admin" class="back-link">&larr; Back to Admin</a>
+    </div>
+
+    <div class="action-section">
+        <h2>Update Repositories</h2>
+        <p class="action-desc">Pull latest changes from all active repositories.</p>
+        <form action="/admin/update" method="POST" class="action-form">
+            <button type="submit" class="btn">Update All Repos</button>
+        </form>
+    </div>
+
+    <div class="action-section">
+        <h2>Generate Reports</h2>
+        <p class="action-desc">Generate weekly reports for the previous complete week for all active repositories.</p>
+        <form action="/admin/generate" method="POST" class="action-form">
+            <button type="submit" class="btn">Generate Reports</button>
+        </form>
+    </div>
+
+    <div class="action-section">
+        <h2>Send Newsletters</h2>
+        <p class="action-desc">Send activity digests to all subscribers.</p>
+        <form action="/admin/send" method="POST" class="action-form">
+            <div class="form-row">
+                <label for="since">Activity Since</label>
+                <select id="since" name="since">
+                    <option value="1d">Last 24 hours</option>
+                    <option value="3d">Last 3 days</option>
+                    <option value="7d" selected>Last 7 days</option>
+                    <option value="2w">Last 2 weeks</option>
+                    <option value="4w">Last 4 weeks</option>
+                </select>
+            </div>
+            <div class="form-row checkbox-row">
+                <label>
+                    <input type="checkbox" name="dry_run" checked>
+                    Dry run (preview only)
+                </label>
+            </div>
+            <button type="submit" class="btn">Send Newsletters</button>
+        </form>
+    </div>
+
+    <div class="notice">
+        <p><strong>Note:</strong> These actions may take some time to complete. You will be redirected back to this page when done.</p>
+    </div>
+</div>
+
+<style>
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.back-link {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.action-section {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.action-section h2 {
+    margin-bottom: 0.5rem;
+}
+
+.action-desc {
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+}
+
+.action-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+}
+
+.form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.form-row label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+.form-row select {
+    padding: 0.5rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+}
+
+.checkbox-row {
+    flex-direction: row;
+}
+
+.checkbox-row label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.btn {
+    padding: 0.5rem 1rem;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.btn:hover {
+    opacity: 0.9;
+}
+
+.notice {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    padding: 1rem;
+    margin-top: 2rem;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+
+.notice strong {
+    color: var(--text);
+}
+</style>
+{{end}}

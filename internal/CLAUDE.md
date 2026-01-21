@@ -8,24 +8,17 @@ when commit messages are unclear. Includes cost tracking to limit API usage and 
 `GetFullCommitMessageTool`) for the agent to selectively retrieve additional context. The router decides which mode to
 use based on configuration.
 
-## cli
-
-Command-line interface built with Kong using struct-tag based command definitions. Defines all CLI commands including
-`repo` (add/remove/list repositories), `analyze` (run AI analysis on commits), `update` (pull and optionally analyze),
-`report` (generate/show weekly reports), `newsletter` (subscriber management), and `serve` (start web server). Each
-command struct has a `Run(ctx *Context) error` method that implements the command logic.
-
 ## config
 
-Configuration management with YAML file support. Defines `Config`, `LLMConfig`, `NewsletterConfig`, and `GitHubConfig`
-structs with sensible defaults. Handles API key resolution from both direct config values and environment variables.
-Includes cost control parameters for agent mode like `max_diff_fetches`, `max_diff_size_kb`, and `max_total_tokens`.
+Configuration management with YAML file support. Defines `Config`, `LLMConfig`, `WebConfig`, `NewsletterConfig`, and
+`GitHubConfig` structs with sensible defaults. Handles API key resolution from both direct config values and environment
+variables. `WebConfig` handles auth proxy settings (`auth_header`, `seed_admin`, `dev_mode`, `dev_user`).
 
 ## db
 
-SQLite database layer using modernc.org/sqlite (pure Go). Manages schema migrations and provides CRUD operations for all
-models: repositories (tracked git repos), activity_runs (analysis results), weekly_reports (week-indexed summaries), and
-newsletter tables (subscribers, sent_newsletters). The migration system tracks schema versions in a `migrations` table.
+SQLite database layer using modernc.org/sqlite (pure Go). Manages schema migrations (version 7) and provides CRUD
+operations for all models: repositories, activity_runs, weekly_reports, newsletter tables (subscribers, subscriptions,
+newsletter_sends), and admins. The migration system tracks schema versions in a `migrations` table.
 
 ## email
 
@@ -59,8 +52,30 @@ Newsletter composition and delivery system. The `Composer` builds email content 
 repository summaries and formatting them using HTML templates. The `Sender` coordinates delivery via the email package,
 tracking which newsletters have been sent to which subscribers in the database.
 
+## service
+
+Business logic layer extracted from former CLI commands. Provides reusable services for web handlers:
+- `RepoService`: Repository management (Add, Remove, Activate, Deactivate, SetURL, Update, UpdateAll)
+- `ReportService`: Report generation (GenerateForWeek, GenerateSince, GenerateLastWeek, ListReports)
+- `NewsletterService`: Subscriber management (AddSubscriber, RemoveSubscriber, Subscribe, Unsubscribe, Send)
+- `AdminService`: Admin user management (Add, Remove, IsAdmin, List, SeedIfNeeded, EnsureDevAdmin)
+
 ## web
 
-HTTP server for browsing weekly reports via a web interface. Uses Go's standard library `http.ServeMux` with embedded
-HTML templates. Provides routes for listing repositories, viewing per-repo reports, and displaying individual report
-content. Templates are parsed at startup using Go's `html/template` package.
+HTTP server for the Activity web application. Uses Go's standard library `http.ServeMux` with embedded HTML templates.
+
+**Public routes** (read-only):
+- `/` - Dashboard with recent reports
+- `/repos` - Repository list
+- `/repos/{name}` - Per-repo reports
+- `/reports/{id}` - Individual report view
+
+**Admin routes** (protected by auth middleware):
+- `/admin` - Admin dashboard
+- `/admin/repos` - Repository management (add, remove, activate/deactivate)
+- `/admin/subscribers` - Newsletter subscriber management
+- `/admin/actions` - Manual triggers (update repos, generate reports, send newsletters)
+- `/admin/admins` - Admin user management
+
+Auth middleware extracts user email from configurable header (default: `oidc-email`) and checks admin status in database.
+In dev mode, auth is bypassed and a configurable dev user is used.

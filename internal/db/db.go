@@ -180,6 +180,19 @@ func (db *DB) migrate() error {
 				ALTER TABLE repositories ADD COLUMN description TEXT;
 			`,
 		},
+		{
+			version: 7,
+			sql: `
+				-- Admin users for web authentication
+				CREATE TABLE admins (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					email TEXT UNIQUE NOT NULL,
+					created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					created_by TEXT
+				);
+				CREATE INDEX idx_admins_email ON admins(email);
+			`,
+		},
 	}
 
 	// Apply pending migrations

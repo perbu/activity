@@ -16,7 +16,15 @@
             <div class="nav-links">
                 <a href="/" class="nav-link {{if eq .ActiveNav "dashboard"}}active{{end}}">dashboard</a>
                 <a href="/repos" class="nav-link {{if eq .ActiveNav "repos"}}active{{end}}">repos</a>
+                {{if and .User .User.IsAdmin}}
+                <a href="/admin" class="nav-link {{if eq .ActiveNav "admin"}}active{{end}}">admin</a>
+                {{end}}
             </div>
+            {{if .User}}
+            <div class="nav-user">
+                <span class="user-email">{{.User.Email}}</span>
+            </div>
+            {{end}}
         </div>
     </nav>
 

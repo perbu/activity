@@ -19,7 +19,7 @@ import (
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	reports, err := s.db.ListAllWeeklyReports(nil)
 	if err != nil {
-		s.renderError(w, "Failed to load reports", err)
+		s.renderError(w, r, "Failed to load reports", err)
 		return
 	}
 
@@ -37,13 +37,14 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 	// Convert to view models
 	summaries := make([]ReportSummary, 0, len(reports))
-	for _, r := range reports {
-		summaries = append(summaries, toReportSummary(r, repoNames[r.RepoID]))
+	for _, rpt := range reports {
+		summaries = append(summaries, toReportSummary(rpt, repoNames[rpt.RepoID]))
 	}
 
 	data := PageData{
 		Title:     "Dashboard",
 		ActiveNav: "dashboard",
+		User:      GetUser(r),
 		Content: DashboardData{
 			Reports:    summaries,
 			TotalCount: len(reports),
@@ -57,7 +58,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRepoList(w http.ResponseWriter, r *http.Request) {
 	repos, err := s.db.ListRepositories(nil)
 	if err != nil {
-		s.renderError(w, "Failed to load repositories", err)
+		s.renderError(w, r, "Failed to load repositories", err)
 		return
 	}
 
@@ -85,6 +86,7 @@ func (s *Server) handleRepoList(w http.ResponseWriter, r *http.Request) {
 	data := PageData{
 		Title:     "Repositories",
 		ActiveNav: "repos",
+		User:      GetUser(r),
 		Content: RepoListData{
 			Repos: summaries,
 		},
@@ -97,13 +99,13 @@ func (s *Server) handleRepoList(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRepoReports(w http.ResponseWriter, r *http.Request) {
 	repoName := r.PathValue("name")
 	if repoName == "" {
-		s.renderError(w, "Repository name required", nil)
+		s.renderError(w, r, "Repository name required", nil)
 		return
 	}
 
 	repo, err := s.db.GetRepositoryByName(repoName)
 	if err != nil {
-		s.renderError(w, "Repository not found: "+repoName, err)
+		s.renderError(w, r, "Repository not found: "+repoName, err)
 		return
 	}
 
@@ -118,21 +120,21 @@ func (s *Server) handleRepoReports(w http.ResponseWriter, r *http.Request) {
 
 	reports, err := s.db.ListWeeklyReportsByRepo(repo.ID, yearFilter)
 	if err != nil {
-		s.renderError(w, "Failed to load reports", err)
+		s.renderError(w, r, "Failed to load reports", err)
 		return
 	}
 
 	// Build report summaries
 	summaries := make([]ReportSummary, 0, len(reports))
-	for _, r := range reports {
-		summaries = append(summaries, toReportSummary(r, repo.Name))
+	for _, rpt := range reports {
+		summaries = append(summaries, toReportSummary(rpt, repo.Name))
 	}
 
 	// Collect unique years for filter
 	allReports, _ := s.db.ListWeeklyReportsByRepo(repo.ID, nil)
 	yearSet := make(map[int]bool)
-	for _, r := range allReports {
-		yearSet[r.Year] = true
+	for _, rpt := range allReports {
+		yearSet[rpt.Year] = true
 	}
 	var years []int
 	for y := range yearSet {
@@ -162,6 +164,7 @@ func (s *Server) handleRepoReports(w http.ResponseWriter, r *http.Request) {
 	data := PageData{
 		Title:     repo.Name + " Reports",
 		ActiveNav: "repos",
+		User:      GetUser(r),
 		Content: RepoReportsData{
 			Repo:        repoSummary,
 			Reports:     summaries,
@@ -178,20 +181,20 @@ func (s *Server) handleReportView(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		s.renderError(w, "Invalid report ID", err)
+		s.renderError(w, r, "Invalid report ID", err)
 		return
 	}
 
 	report, err := s.db.GetWeeklyReport(id)
 	if err != nil {
-		s.renderError(w, "Report not found", err)
+		s.renderError(w, r, "Report not found", err)
 		return
 	}
 
 	// Get repo name
 	repo, err := s.db.GetRepository(report.RepoID)
 	if err != nil {
-		s.renderError(w, "Repository not found", err)
+		s.renderError(w, r, "Repository not found", err)
 		return
 	}
 
@@ -200,6 +203,7 @@ func (s *Server) handleReportView(w http.ResponseWriter, r *http.Request) {
 	data := PageData{
 		Title:     repo.Name + " " + detail.WeekLabel,
 		ActiveNav: "",
+		User:      GetUser(r),
 		Content: ReportViewData{
 			Report: detail,
 		},
@@ -217,7 +221,7 @@ func (s *Server) render(w http.ResponseWriter, tmpl *template.Template, data Pag
 }
 
 // renderError renders an error page
-func (s *Server) renderError(w http.ResponseWriter, message string, err error) {
+func (s *Server) renderError(w http.ResponseWriter, r *http.Request, message string, err error) {
 	errMsg := message
 	if err != nil {
 		errMsg = message + ": " + err.Error()
@@ -226,6 +230,7 @@ func (s *Server) renderError(w http.ResponseWriter, message string, err error) {
 	data := PageData{
 		Title:     "Error",
 		ActiveNav: "",
+		User:      GetUser(r),
 		Error:     errMsg,
 		Content:   nil,
 	}

@@ -14,10 +14,15 @@ var staticFS embed.FS
 
 // Templates holds all parsed templates
 type Templates struct {
-	index      *template.Template
-	repos      *template.Template
-	repoDetail *template.Template
-	report     *template.Template
+	index            *template.Template
+	repos            *template.Template
+	repoDetail       *template.Template
+	report           *template.Template
+	admin            *template.Template
+	adminRepos       *template.Template
+	adminSubscribers *template.Template
+	adminActions     *template.Template
+	adminAdmins      *template.Template
 }
 
 // StaticFS returns the embedded static files filesystem
@@ -61,10 +66,41 @@ func ParseTemplates() (*Templates, error) {
 		return nil, err
 	}
 
+	// Admin templates
+	admin, err := template.Must(base.Clone()).ParseFS(templateFS, "templates/admin.html")
+	if err != nil {
+		return nil, err
+	}
+
+	adminRepos, err := template.Must(base.Clone()).ParseFS(templateFS, "templates/admin_repos.html")
+	if err != nil {
+		return nil, err
+	}
+
+	adminSubscribers, err := template.Must(base.Clone()).ParseFS(templateFS, "templates/admin_subscribers.html")
+	if err != nil {
+		return nil, err
+	}
+
+	adminActions, err := template.Must(base.Clone()).ParseFS(templateFS, "templates/admin_actions.html")
+	if err != nil {
+		return nil, err
+	}
+
+	adminAdmins, err := template.Must(base.Clone()).ParseFS(templateFS, "templates/admin_admins.html")
+	if err != nil {
+		return nil, err
+	}
+
 	return &Templates{
-		index:      index,
-		repos:      repos,
-		repoDetail: repoDetail,
-		report:     report,
+		index:            index,
+		repos:            repos,
+		repoDetail:       repoDetail,
+		report:           report,
+		admin:            admin,
+		adminRepos:       adminRepos,
+		adminSubscribers: adminSubscribers,
+		adminActions:     adminActions,
+		adminAdmins:      adminAdmins,
 	}, nil
 }

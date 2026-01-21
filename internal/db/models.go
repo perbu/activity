@@ -79,3 +79,11 @@ type WeeklyReport struct {
 	UpdatedAt      time.Time
 	SourceRunID    sql.NullInt64
 }
+
+// Admin represents an admin user for web authentication
+type Admin struct {
+	ID        int64
+	Email     string
+	CreatedAt time.Time
+	CreatedBy sql.NullString // Email of admin who created this admin
+}

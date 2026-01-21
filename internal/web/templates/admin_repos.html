@@ -1,0 +1,242 @@
+{{define "content"}}
+<div class="admin-repos">
+    <div class="page-header">
+        <h1>Manage Repositories</h1>
+        <a href="/admin" class="back-link">&larr; Back to Admin</a>
+    </div>
+
+    <div class="add-form-section">
+        <h2>Add Repository</h2>
+        <form action="/admin/repos/add" method="POST" class="add-form">
+            <div class="form-row">
+                <label for="name">Name</label>
+                <input type="text" id="name" name="name" required placeholder="my-repo">
+            </div>
+            <div class="form-row">
+                <label for="url">URL</label>
+                <input type="url" id="url" name="url" required placeholder="https://github.com/user/repo">
+            </div>
+            <div class="form-row">
+                <label for="branch">Branch</label>
+                <input type="text" id="branch" name="branch" value="main" placeholder="main">
+            </div>
+            <div class="form-row checkbox-row">
+                <label>
+                    <input type="checkbox" name="private">
+                    Private (requires GitHub App)
+                </label>
+            </div>
+            <button type="submit" class="btn">Add Repository</button>
+        </form>
+    </div>
+
+    <div class="list-section">
+        <h2>Repositories ({{len .Content.Repos}})</h2>
+        {{if .Content.Repos}}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>URL</th>
+                    <th>Branch</th>
+                    <th>Status</th>
+                    <th>Reports</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Content.Repos}}
+                <tr>
+                    <td><a href="/repos/{{.Name}}">{{.Name}}</a></td>
+                    <td class="url-cell">{{.URL}}</td>
+                    <td>{{.Branch}}</td>
+                    <td>
+                        {{if .Active}}
+                        <span class="status-active">Active</span>
+                        {{else}}
+                        <span class="status-inactive">Inactive</span>
+                        {{end}}
+                    </td>
+                    <td>{{.ReportCount}}</td>
+                    <td class="actions-cell">
+                        {{if .Active}}
+                        <form action="/admin/repos/toggle" method="POST" class="inline-form">
+                            <input type="hidden" name="name" value="{{.Name}}">
+                            <input type="hidden" name="action" value="deactivate">
+                            <button type="submit" class="btn-small">Deactivate</button>
+                        </form>
+                        {{else}}
+                        <form action="/admin/repos/toggle" method="POST" class="inline-form">
+                            <input type="hidden" name="name" value="{{.Name}}">
+                            <input type="hidden" name="action" value="activate">
+                            <button type="submit" class="btn-small">Activate</button>
+                        </form>
+                        {{end}}
+                        <form action="/admin/repos/remove" method="POST" class="inline-form" onsubmit="return confirm('Are you sure you want to remove {{.Name}}?');">
+                            <input type="hidden" name="name" value="{{.Name}}">
+                            <button type="submit" class="btn-small btn-danger">Remove</button>
+                        </form>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="empty-state">No repositories configured.</p>
+        {{end}}
+    </div>
+</div>
+
+<style>
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.back-link {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.add-form-section {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.add-form-section h2 {
+    margin-bottom: 1rem;
+}
+
+.add-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+}
+
+.form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.form-row label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+.form-row input[type="text"],
+.form-row input[type="url"] {
+    padding: 0.5rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+    width: 200px;
+}
+
+.checkbox-row {
+    flex-direction: row;
+}
+
+.checkbox-row label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.btn {
+    padding: 0.5rem 1rem;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.btn:hover {
+    opacity: 0.9;
+}
+
+.list-section h2 {
+    margin-bottom: 1rem;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.data-table th {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+.url-cell {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-muted);
+}
+
+.status-active {
+    color: var(--accent);
+}
+
+.status-inactive {
+    color: var(--text-muted);
+}
+
+.actions-cell {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.inline-form {
+    display: inline;
+}
+
+.btn-small {
+    padding: 0.25rem 0.5rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.75rem;
+}
+
+.btn-small:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.btn-danger:hover {
+    border-color: #ff6b6b;
+    color: #ff6b6b;
+}
+
+.empty-state {
+    color: var(--text-muted);
+    text-align: center;
+    padding: 2rem;
+}
+</style>
+{{end}}

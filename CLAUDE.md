@@ -4,40 +4,88 @@
 
 This tool analyzes git commit history using AI to generate human-readable activity summaries. It tracks multiple repositories, analyzes commit ranges incrementally, and uses intelligent agents to selectively fetch code diffs only when commit messages are unclear. The implementation emphasizes cost control through configurable limits and phased AI integration (simple LLM → agent-based with tools).
 
-## Code Overview (~2000 LOC)
+## Architecture
+
+Activity is a **pure web application** with admin functionality. Public routes (dashboard, repos, reports) are read-only. Admin operations (repository management, newsletters, analysis triggers, user management) require authentication via an auth proxy that provides user email in a configurable header.
+
+**Auth Model:** Auth proxy provides user email via configurable header (default: `oidc-email`). Admins are listed in SQLite `admins` table.
+
+**Dev Mode:** When `dev_mode: true` in config, auth is bypassed and `dev_user` email is used (default: `dev@localhost`), treated as admin.
+
+## Code Overview
 
 ### `main.go`
 
-Main entry point at the root for simple `go install`. Uses kong for CLI parsing with struct-tag based command definitions. Wires together configuration, database, git operations, LLM client, and analyzer components. Handles initialization of the data directory and database schema.
+Main entry point. Uses standard library `flag` for CLI arguments (port, host, config, data-dir, debug). Initializes database, services, and starts the web server.
 
 ### `internal/config`
 
-Configuration management with YAML support. Defines `Config` and `LLMConfig` structs with defaults. Supports both Phase 2 (simple LLM) and Phase 3 (agent-based) settings including cost control parameters (`max_diff_fetches`, `max_diff_size_kb`, `max_total_tokens`). Handles path expansion and environment variable resolution.
+Configuration management with YAML support. Defines `Config`, `LLMConfig`, `WebConfig`, `NewsletterConfig`, and `GitHubConfig` structs. WebConfig handles auth settings (`auth_header`, `seed_admin`, `dev_mode`, `dev_user`).
 
 ### `internal/db`
 
-SQLite database layer with migrations. Manages tables: `repositories` (tracked repos), `activity_runs` (analysis results), `weekly_reports` (week-indexed summaries), and newsletter tables. Includes CRUD operations for all models. Migration version 4 adds `weekly_reports` table for week-indexed analysis storage.
+SQLite database layer with migrations (version 7). Tables: `repositories`, `activity_runs`, `weekly_reports`, newsletter tables (`subscribers`, `subscriptions`, `newsletter_sends`), and `admins`. Includes CRUD operations for all models.
+
+### `internal/service`
+
+Business logic layer extracted from former CLI commands:
+- `RepoService`: Add, Remove, Activate, Deactivate, SetURL, Update, UpdateAll
+- `ReportService`: GenerateForWeek, GenerateSince, GenerateLastWeek, ListReports
+- `NewsletterService`: AddSubscriber, RemoveSubscriber, Subscribe, Unsubscribe, Send
+- `AdminService`: Add, Remove, IsAdmin, List, SeedIfNeeded, EnsureDevAdmin
+
+### `internal/web`
+
+HTTP server with public and admin routes:
+- **Public**: `/` (dashboard), `/repos`, `/repos/{name}`, `/reports/{id}`
+- **Admin**: `/admin`, `/admin/repos`, `/admin/subscribers`, `/admin/actions`, `/admin/admins`
+
+Auth middleware extracts user from header (or uses dev user in dev mode) and checks admin status. `RequireAdmin` middleware protects admin routes.
 
 ### `internal/git`
 
-Git operations wrapper using `exec.Command`. Provides functions for cloning, pulling, retrieving commit ranges, fetching diffs, and getting detailed commit info. Uses record separator delimiters to safely parse git output. Includes ISO week utilities (`ISOWeekBounds`, `GetCommitsForWeek`, `ParseISOWeek`, `WeeksInRange`) for weekly report generation.
+Git operations wrapper using `exec.Command`. Provides functions for cloning, pulling, retrieving commit ranges, fetching diffs. Includes ISO week utilities for weekly report generation.
 
 ### `internal/llm`
 
-LLM client abstraction supporting both genai (Phase 2) and ADK (Phase 3). Creates Gemini API clients and provides `GenerateText` for simple prompts and `GetGeminiModel` for agent-based analysis. Handles API key management and model configuration.
+LLM client abstraction supporting Gemini API (Phase 2 simple and Phase 3 agent modes).
 
 ### `internal/analyzer`
 
-Core analysis logic with three modes: Phase 2 (simple LLM), Phase 3 (agent with tools), and routing between them. Contains cost tracker for limiting diff fetches, two ADK tools (`GetCommitDiffTool`, `GetFullCommitMessageTool`), and agent orchestration with in-memory sessions. Builds prompts from commit metadata and stores results with cost tracking metadata.
+Core analysis logic with cost tracking. Agent mode uses ADK tools (`GetCommitDiffTool`, `GetFullCommitMessageTool`) for selective diff fetching.
 
-### `internal/cli`
+## Running
 
-CLI command implementations using kong's struct-tag based approach. Command structs are defined in `commands.go` with kong tags for flags, args, and help text. Each command struct has a `Run(ctx *Context) error` method. Commands include: `repo` (add/remove/list repos), `analyze` (analyze commits), `update` (pull and analyze), `report` (generate/show/list weekly reports), and `newsletter` (subscriber management). Flags can appear in any position relative to commands.
+```bash
+# Development mode (no auth required)
+./activity --data-dir ./data --port 8080
+
+# With config file
+./activity --config /path/to/config.yaml
+
+# Production (behind auth proxy)
+./activity --data-dir /var/lib/activity --port 8080 --host 0.0.0.0
+```
+
+## Configuration
+
+```yaml
+data_dir: /var/lib/activity
+web:
+  auth_header: oidc-email    # Header containing user email
+  seed_admin: admin@example.com  # First admin on empty DB
+  dev_mode: false            # Set true for local development
+  dev_user: dev@localhost    # Email used in dev mode
+llm:
+  use_agent: true            # Agent mode (default)
+  max_diff_fetches: 5        # Cost control
+newsletter:
+  enabled: true
+  sendgrid_api_key_env: SENDGRID_API_KEY
+```
 
 ## Phase Architecture
 
-**Phase 1 (Complete)**: Foundation - git operations, database, CLI structure
+**Phase 1 (Complete)**: Foundation - git operations, database, web structure
 **Phase 2 (Complete)**: Simple AI - commit metadata sent to LLM (~$0.0005/analysis)
 **Phase 3 (Complete, Default)**: Intelligent agents - ADK-based with selective diff fetching (~$0.0005-0.01/analysis, hard-capped)
-
-Agent mode is default. For well-documented repos with clear commit messages, the agent skips diff fetching and costs match Phase 2. Set `use_agent: false` in config to use Phase 2 simple mode.

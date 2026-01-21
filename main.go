@@ -2,17 +2,18 @@ package main
 
 import (
 	_ "embed"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
 	"strings"
 
-	"github.com/alecthomas/kong"
 	"github.com/joho/godotenv"
-	"github.com/perbu/activity/internal/cli"
 	"github.com/perbu/activity/internal/config"
 	"github.com/perbu/activity/internal/db"
 	"github.com/perbu/activity/internal/github"
+	"github.com/perbu/activity/internal/service"
+	"github.com/perbu/activity/internal/web"
 )
 
 //go:embed .version
@@ -42,29 +43,35 @@ func run() error {
 	// Load .env file if present (ignore errors if file doesn't exist)
 	_ = godotenv.Load()
 
-	var cliArgs cli.CLI
-	kongCtx := kong.Parse(&cliArgs,
-		kong.Name("activity"),
-		kong.Description("Git repository activity analyzer"),
-		kong.UsageOnError(),
-		kong.Vars{
-			"version": strings.TrimSpace(version),
-		},
+	// Parse command-line flags
+	var (
+		port       = flag.Int("port", 8080, "Port to listen on")
+		host       = flag.String("host", "localhost", "Host to bind to")
+		configPath = flag.String("config", "", "Config file path")
+		dataDir    = flag.String("data-dir", "", "Data directory")
+		debug      = flag.Bool("debug", false, "Enable debug logging")
+		showVer    = flag.Bool("version", false, "Show version")
 	)
+	flag.Parse()
+
+	if *showVer {
+		fmt.Println(strings.TrimSpace(version))
+		return nil
+	}
 
 	// Load configuration
-	cfg, err := config.Load(cliArgs.Config)
+	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	// Override data dir if specified
-	if cliArgs.DataDir != "" {
-		cfg.DataDir = cliArgs.DataDir
+	if *dataDir != "" {
+		cfg.DataDir = *dataDir
 	}
 
 	// Override debug if specified via CLI flag
-	if cliArgs.Debug {
+	if *debug {
 		cfg.Debug = true
 	}
 
@@ -102,15 +109,15 @@ func run() error {
 		}
 	}
 
-	// Create context
-	appCtx := &cli.Context{
-		DB:            database,
-		Config:        cfg,
-		TokenProvider: tokenProvider,
-		Verbose:       cliArgs.Verbose,
-		Quiet:         cliArgs.Quiet,
+	// Create services
+	services := service.New(database, cfg, tokenProvider)
+
+	// Create and start web server
+	server, err := web.NewServer(database, services, cfg, *host, *port)
+	if err != nil {
+		return fmt.Errorf("failed to create server: %w", err)
 	}
 
-	// Run the selected command
-	return kongCtx.Run(appCtx)
+	slog.Info("Starting web server", "address", server.Address())
+	return server.Start()
 }

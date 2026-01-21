@@ -16,6 +16,15 @@ type Config struct {
 	LLM        LLMConfig        `yaml:"llm"`
 	Newsletter NewsletterConfig `yaml:"newsletter"`
 	GitHub     GitHubConfig     `yaml:"github"`
+	Web        WebConfig        `yaml:"web"`
+}
+
+// WebConfig represents web server and authentication configuration
+type WebConfig struct {
+	AuthHeader string `yaml:"auth_header"` // HTTP header containing user email (default: "oidc-email")
+	SeedAdmin  string `yaml:"seed_admin"`  // First admin email to create on startup
+	DevMode    bool   `yaml:"dev_mode"`    // Bypass auth, use dev_user (for local development)
+	DevUser    string `yaml:"dev_user"`    // Email to use in dev mode (default: "dev@localhost")
 }
 
 // GitHubConfig represents GitHub App authentication configuration
@@ -89,7 +98,35 @@ func DefaultConfig() *Config {
 			InstallationIDEnv: "GITHUB_INSTALLATION_ID",
 			PrivateKeyEnv:     "GITHUB_APP_PRIVATE_KEY",
 		},
+		Web: WebConfig{
+			AuthHeader: "oidc-email",
+			DevUser:    "dev@localhost",
+		},
 	}
+}
+
+// GetSeedAdmin returns the seed admin email from config or environment
+func (c *Config) GetSeedAdmin() string {
+	if c.Web.SeedAdmin != "" {
+		return c.Web.SeedAdmin
+	}
+	return os.Getenv("ACTIVITY_SEED_ADMIN")
+}
+
+// GetAuthHeader returns the configured auth header name
+func (c *Config) GetAuthHeader() string {
+	if c.Web.AuthHeader != "" {
+		return c.Web.AuthHeader
+	}
+	return "oidc-email"
+}
+
+// GetDevUser returns the dev mode user email
+func (c *Config) GetDevUser() string {
+	if c.Web.DevUser != "" {
+		return c.Web.DevUser
+	}
+	return "dev@localhost"
 }
 
 // Load loads configuration from the specified path, falling back to defaults

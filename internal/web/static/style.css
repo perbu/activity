@@ -12,6 +12,9 @@
     --warning: #d29922;
     --error: #f85149;
     --commit-dot: #238636;
+    /* Aliases for admin templates */
+    --bg: var(--bg-primary);
+    --text: var(--text-primary);
 }
 
 * {
@@ -93,6 +96,15 @@ a:hover {
 .nav-link.active {
     color: var(--text-primary);
     background: var(--bg-tertiary);
+}
+
+.nav-user {
+    margin-left: auto;
+}
+
+.user-email {
+    font-size: 12px;
+    color: var(--text-muted);
 }
 
 /* Main content */

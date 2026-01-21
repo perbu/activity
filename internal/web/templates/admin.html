@@ -1,0 +1,101 @@
+{{define "content"}}
+<div class="admin-dashboard">
+    <h1>Admin Dashboard</h1>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value">{{.Content.RepoCount}}</div>
+            <div class="stat-label">Repositories</div>
+            <a href="/admin/repos" class="stat-link">Manage</a>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{.Content.ReportCount}}</div>
+            <div class="stat-label">Reports</div>
+            <a href="/" class="stat-link">View</a>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{.Content.SubscriberCount}}</div>
+            <div class="stat-label">Subscribers</div>
+            <a href="/admin/subscribers" class="stat-link">Manage</a>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{.Content.AdminCount}}</div>
+            <div class="stat-label">Admins</div>
+            <a href="/admin/admins" class="stat-link">Manage</a>
+        </div>
+    </div>
+
+    <div class="admin-nav">
+        <h2>Quick Actions</h2>
+        <div class="admin-links">
+            <a href="/admin/repos" class="admin-link">Manage Repositories</a>
+            <a href="/admin/subscribers" class="admin-link">Manage Subscribers</a>
+            <a href="/admin/actions" class="admin-link">Run Actions</a>
+            <a href="/admin/admins" class="admin-link">Manage Admins</a>
+        </div>
+    </div>
+</div>
+
+<style>
+.admin-dashboard h1 {
+    margin-bottom: 2rem;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 3rem;
+}
+
+.stat-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 3rem;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+.stat-label {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1rem;
+}
+
+.stat-link {
+    font-size: 0.875rem;
+    color: var(--accent);
+}
+
+.admin-nav h2 {
+    margin-bottom: 1rem;
+}
+
+.admin-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.admin-link {
+    display: inline-block;
+    padding: 0.75rem 1.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text);
+    text-decoration: none;
+}
+
+.admin-link:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+</style>
+{{end}}
