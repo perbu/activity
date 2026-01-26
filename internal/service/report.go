@@ -32,6 +32,11 @@ func NewReportService(database *db.DB, cfg *config.Config, tokenProvider *github
 	}
 }
 
+// repoPath computes the local filesystem path for a repository
+func (s *ReportService) repoPath(repoName string) string {
+	return db.RepoLocalPath(s.cfg.DataDir, repoName)
+}
+
 // GenerateOptions contains options for report generation
 type GenerateOptions struct {
 	RepoName string // Repository name (or empty for all active repos)
@@ -77,8 +82,10 @@ func (s *ReportService) GenerateForWeek(ctx context.Context, repoName string, we
 		slog.Warn("Failed to fetch branches", "error", err)
 	}
 
+	repoPath := s.repoPath(repo.Name)
+
 	// Get commits for this week
-	commits, err := git.GetCommitsForWeek(repo.LocalPath, year, week)
+	commits, err := git.GetCommitsForWeek(repoPath, year, week)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get commits for %s: %w", weekStr, err)
 	}
@@ -88,7 +95,7 @@ func (s *ReportService) GenerateForWeek(ctx context.Context, repoName string, we
 	}
 
 	// Get feature branch activity
-	branchActivity, err := git.GetFeatureBranchActivity(repo.LocalPath, repo.Branch, year, week)
+	branchActivity, err := git.GetFeatureBranchActivity(repoPath, repo.Branch, year, week)
 	if err != nil {
 		slog.Warn("Failed to get branch activity", "week", weekStr, "error", err)
 		branchActivity = nil
@@ -130,6 +137,8 @@ func (s *ReportService) GenerateSince(ctx context.Context, repoName string, sinc
 		slog.Warn("Failed to fetch branches", "error", err)
 	}
 
+	repoPath := s.repoPath(repo.Name)
+
 	// Initialize LLM client once for all reports
 	llmClient, err := llm.NewClient(ctx, s.cfg)
 	if err != nil {
@@ -157,7 +166,7 @@ func (s *ReportService) GenerateSince(ctx context.Context, repoName string, sinc
 		}
 
 		// Get commits for this week
-		commits, err := git.GetCommitsForWeek(repo.LocalPath, year, wk)
+		commits, err := git.GetCommitsForWeek(repoPath, year, wk)
 		if err != nil {
 			slog.Error("Failed to get commits", "week", weekStr, "error", err)
 			continue
@@ -169,7 +178,7 @@ func (s *ReportService) GenerateSince(ctx context.Context, repoName string, sinc
 		}
 
 		// Get feature branch activity
-		branchActivity, err := git.GetFeatureBranchActivity(repo.LocalPath, repo.Branch, year, wk)
+		branchActivity, err := git.GetFeatureBranchActivity(repoPath, repo.Branch, year, wk)
 		if err != nil {
 			slog.Warn("Failed to get branch activity", "week", weekStr, "error", err)
 			branchActivity = nil
@@ -274,6 +283,7 @@ func (s *ReportService) ListAllReports(year *int) ([]*db.WeeklyReport, error) {
 
 // fetchBranches fetches all remote branches for a repository
 func (s *ReportService) fetchBranches(repo *db.Repository) error {
+	repoPath := s.repoPath(repo.Name)
 	if repo.Private {
 		if s.tokenProvider == nil {
 			return fmt.Errorf("repository '%s' is private but no GitHub App is configured", repo.Name)
@@ -282,9 +292,9 @@ func (s *ReportService) fetchBranches(repo *db.Repository) error {
 		if err != nil {
 			return fmt.Errorf("failed to get GitHub token: %w", err)
 		}
-		return git.FetchAllWithAuth(repo.LocalPath, repo.URL, token)
+		return git.FetchAllWithAuth(repoPath, repo.URL, token)
 	}
-	return git.FetchAll(repo.LocalPath)
+	return git.FetchAll(repoPath)
 }
 
 // generateWeeklyReport generates a report using a new LLM client

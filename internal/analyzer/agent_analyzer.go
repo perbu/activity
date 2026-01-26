@@ -116,8 +116,11 @@ func (a *Analyzer) analyzeWithAgent(ctx context.Context, repo *db.Repository, co
 		a.config.LLM.MaxTotalTokens,
 	)
 
+	// Compute repo path from config
+	repoPath := db.RepoLocalPath(a.config.DataDir, repo.Name)
+
 	// Create agent
-	agt, err := a.createAnalyzerAgent(ctx, repo.LocalPath, costTracker)
+	agt, err := a.createAnalyzerAgent(ctx, repoPath, costTracker)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to create agent: %w", err)
 	}

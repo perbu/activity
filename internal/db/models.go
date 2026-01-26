@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"path/filepath"
 	"time"
 )
 
@@ -11,7 +12,6 @@ type Repository struct {
 	Name        string
 	URL         string
 	Branch      string
-	LocalPath   string
 	Active      bool
 	Private     bool           // Requires GitHub App authentication
 	Description sql.NullString // AI-generated description from README
@@ -19,6 +19,12 @@ type Repository struct {
 	UpdatedAt   time.Time
 	LastRunAt   sql.NullTime
 	LastRunSHA  sql.NullString
+}
+
+// RepoLocalPath computes the local filesystem path for a repository.
+// The path is derived from the data directory and repository name.
+func RepoLocalPath(dataDir, repoName string) string {
+	return filepath.Join(dataDir, repoName)
 }
 
 // ActivityRun represents a single analysis run on a repository

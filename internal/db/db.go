@@ -193,6 +193,13 @@ func (db *DB) migrate() error {
 				CREATE INDEX idx_admins_email ON admins(email);
 			`,
 		},
+		{
+			version: 8,
+			sql: `
+				-- Remove local_path column: path is now computed from data_dir + repo name
+				ALTER TABLE repositories DROP COLUMN local_path;
+			`,
+		},
 	}
 
 	// Apply pending migrations

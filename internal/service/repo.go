@@ -33,6 +33,11 @@ func NewRepoService(database *db.DB, cfg *config.Config, tokenProvider *github.T
 	}
 }
 
+// repoPath computes the local filesystem path for a repository
+func (s *RepoService) repoPath(repoName string) string {
+	return db.RepoLocalPath(s.cfg.DataDir, repoName)
+}
+
 // AddOptions contains options for adding a repository
 type AddOptions struct {
 	Name    string
@@ -59,8 +64,8 @@ func (s *RepoService) Add(ctx context.Context, opts AddOptions) (*db.Repository,
 		opts.Branch = "main"
 	}
 
-	// Create local path
-	localPath := filepath.Join(s.cfg.DataDir, opts.Name)
+	// Compute local path from data dir and repo name
+	localPath := s.repoPath(opts.Name)
 
 	// Check if directory already exists
 	if _, err := os.Stat(localPath); err == nil {
@@ -95,7 +100,7 @@ func (s *RepoService) Add(ctx context.Context, opts AddOptions) (*db.Repository,
 	}
 
 	// Create database entry
-	repo, err := s.db.CreateRepository(opts.Name, opts.URL, opts.Branch, localPath, opts.Private, description)
+	repo, err := s.db.CreateRepository(opts.Name, opts.URL, opts.Branch, opts.Private, description)
 	if err != nil {
 		// Clean up cloned directory on failure
 		os.RemoveAll(localPath)
@@ -118,9 +123,10 @@ func (s *RepoService) Remove(name string, keepFiles bool) error {
 	}
 
 	if !keepFiles {
-		slog.Info("Removing repository files", "path", repo.LocalPath)
-		if err := os.RemoveAll(repo.LocalPath); err != nil {
-			slog.Warn("Failed to remove files", "path", repo.LocalPath, "error", err)
+		repoPath := s.repoPath(repo.Name)
+		slog.Info("Removing repository files", "path", repoPath)
+		if err := os.RemoveAll(repoPath); err != nil {
+			slog.Warn("Failed to remove files", "path", repoPath, "error", err)
 		}
 	}
 
@@ -174,9 +180,10 @@ func (s *RepoService) SetURL(name, newURL string) error {
 	}
 
 	oldURL := repo.URL
+	repoPath := s.repoPath(repo.Name)
 
 	// Update git remote
-	if err := git.SetRemoteURL(repo.LocalPath, newURL); err != nil {
+	if err := git.SetRemoteURL(repoPath, newURL); err != nil {
 		return fmt.Errorf("failed to update git remote: %w", err)
 	}
 
@@ -184,7 +191,7 @@ func (s *RepoService) SetURL(name, newURL string) error {
 	repo.URL = newURL
 	if err := s.db.UpdateRepository(repo); err != nil {
 		// Try to rollback git remote on DB failure
-		_ = git.SetRemoteURL(repo.LocalPath, oldURL)
+		_ = git.SetRemoteURL(repoPath, oldURL)
 		return fmt.Errorf("failed to update database: %w", err)
 	}
 
@@ -208,10 +215,11 @@ func (s *RepoService) Update(ctx context.Context, name string) (*UpdateResult, e
 		return nil, fmt.Errorf("repository not found: %s", name)
 	}
 
+	repoPath := s.repoPath(repo.Name)
 	slog.Info("Updating repository", "name", name)
 
 	// Get current SHA before pull
-	beforeSHA, err := git.GetCurrentSHA(repo.LocalPath)
+	beforeSHA, err := git.GetCurrentSHA(repoPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current SHA: %w", err)
 	}
@@ -225,23 +233,23 @@ func (s *RepoService) Update(ctx context.Context, name string) (*UpdateResult, e
 		if err != nil {
 			return nil, fmt.Errorf("failed to get GitHub token: %w", err)
 		}
-		if err := git.FetchAllWithAuth(repo.LocalPath, repo.URL, token); err != nil {
+		if err := git.FetchAllWithAuth(repoPath, repo.URL, token); err != nil {
 			slog.Warn("Failed to fetch all branches", "error", err)
 		}
-		if err := git.PullWithAuth(repo.LocalPath, repo.URL, token); err != nil {
+		if err := git.PullWithAuth(repoPath, repo.URL, token); err != nil {
 			return nil, fmt.Errorf("failed to pull: %w", err)
 		}
 	} else {
-		if err := git.FetchAll(repo.LocalPath); err != nil {
+		if err := git.FetchAll(repoPath); err != nil {
 			slog.Warn("Failed to fetch all branches", "error", err)
 		}
-		if err := git.Pull(repo.LocalPath); err != nil {
+		if err := git.Pull(repoPath); err != nil {
 			return nil, fmt.Errorf("failed to pull: %w", err)
 		}
 	}
 
 	// Get SHA after pull
-	afterSHA, err := git.GetCurrentSHA(repo.LocalPath)
+	afterSHA, err := git.GetCurrentSHA(repoPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get updated SHA: %w", err)
 	}
@@ -262,7 +270,7 @@ func (s *RepoService) Update(ctx context.Context, name string) (*UpdateResult, e
 		result.AlreadyUpToDate = true
 		slog.Info("Repository already up to date", "name", name)
 	} else {
-		commits, err := git.GetCommitRange(repo.LocalPath, beforeSHA, afterSHA)
+		commits, err := git.GetCommitRange(repoPath, beforeSHA, afterSHA)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get commit range: %w", err)
 		}
