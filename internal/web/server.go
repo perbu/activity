@@ -42,6 +42,13 @@ func NewServer(database *db.DB, services *service.Services, cfg *config.Config, 
 		port:      port,
 	}
 
+	// Log configured seed admin
+	if seedAdmin := cfg.GetSeedAdmin(); seedAdmin != "" {
+		slog.Info("Seed admin configured", "email", seedAdmin)
+	} else {
+		slog.Warn("No seed_admin configured")
+	}
+
 	// Seed admin if needed
 	if err := services.Admin.SeedIfNeeded(); err != nil {
 		slog.Error("Failed to seed admin", "error", err)
@@ -54,6 +61,19 @@ func NewServer(database *db.DB, services *service.Services, cfg *config.Config, 
 
 	if cfg.Web.DevMode {
 		slog.Warn("Running in dev mode - auth disabled", "dev_user", cfg.GetDevUser())
+	}
+
+	// Log current admins and auth header
+	slog.Info("Auth header configured", "header", cfg.GetAuthHeader())
+	admins, err := services.Admin.List()
+	if err != nil {
+		slog.Error("Failed to list admins", "error", err)
+	} else if len(admins) == 0 {
+		slog.Warn("No admin users configured")
+	} else {
+		for _, admin := range admins {
+			slog.Info("Admin user", "email", admin.Email, "created_by", admin.CreatedBy)
+		}
 	}
 
 	s.registerRoutes()
