@@ -1,8 +1,21 @@
 #!/bin/bash
 set -e
 
-SQLITE_DB="./data/activity.db"
-PG_DB="activity"
+usage() {
+    echo "Usage: $0 <sqlite_db_path> <postgres_dsn>"
+    echo ""
+    echo "Example:"
+    echo "  $0 ./data/activity.db 'postgres:///activity?sslmode=disable'"
+    echo "  $0 ./data/activity.db 'postgres://user:pass@localhost/activity'"
+    exit 1
+}
+
+if [ $# -ne 2 ]; then
+    usage
+fi
+
+SQLITE_DB="$1"
+PG_DSN="$2"
 TMPDIR=$(mktemp -d)
 
 cleanup() {
@@ -19,7 +32,7 @@ clean_timestamps() {
 
 echo "=== SQLite to PostgreSQL Migration ==="
 echo "Source: $SQLITE_DB"
-echo "Target: PostgreSQL database '$PG_DB'"
+echo "Target: $PG_DSN"
 echo ""
 
 # Check SQLite database exists
@@ -29,13 +42,13 @@ if [ ! -f "$SQLITE_DB" ]; then
 fi
 
 # Check PostgreSQL is accessible
-if ! psql -d "$PG_DB" -c "SELECT 1" > /dev/null 2>&1; then
-    echo "ERROR: Cannot connect to PostgreSQL database '$PG_DB'"
+if ! psql "$PG_DSN" -c "SELECT 1" > /dev/null 2>&1; then
+    echo "ERROR: Cannot connect to PostgreSQL: $PG_DSN"
     exit 1
 fi
 
 echo "Step 1: Clearing PostgreSQL tables..."
-psql -d "$PG_DB" -q <<'EOF'
+psql "$PG_DSN" -q <<'EOF'
 TRUNCATE TABLE newsletter_sends, subscriptions, subscribers, weekly_reports, activity_runs, admins, repositories RESTART IDENTITY CASCADE;
 EOF
 echo "  Done."
@@ -69,56 +82,56 @@ echo "Step 3: Importing to PostgreSQL..."
 
 # Import repositories
 if [ -s "$TMPDIR/repositories.csv" ]; then
-    psql -d "$PG_DB" -q -c "\COPY repositories(id, name, url, branch, active, private, description, created_at, updated_at, last_run_at, last_run_sha) FROM '$TMPDIR/repositories.csv' WITH CSV"
+    psql "$PG_DSN" -q -c "\COPY repositories(id, name, url, branch, active, private, description, created_at, updated_at, last_run_at, last_run_sha) FROM '$TMPDIR/repositories.csv' WITH CSV"
 fi
-COUNT=$(psql -d "$PG_DB" -tAc "SELECT COUNT(*) FROM repositories")
+COUNT=$(psql "$PG_DSN" -tAc "SELECT COUNT(*) FROM repositories")
 echo "  repositories: $COUNT"
 
 # Import admins
 if [ -s "$TMPDIR/admins.csv" ]; then
-    psql -d "$PG_DB" -q -c "\COPY admins(id, email, created_at, created_by) FROM '$TMPDIR/admins.csv' WITH CSV"
+    psql "$PG_DSN" -q -c "\COPY admins(id, email, created_at, created_by) FROM '$TMPDIR/admins.csv' WITH CSV"
 fi
-COUNT=$(psql -d "$PG_DB" -tAc "SELECT COUNT(*) FROM admins")
+COUNT=$(psql "$PG_DSN" -tAc "SELECT COUNT(*) FROM admins")
 echo "  admins: $COUNT"
 
 # Import activity_runs
 if [ -s "$TMPDIR/activity_runs.csv" ]; then
-    psql -d "$PG_DB" -q -c "\COPY activity_runs(id, repo_id, start_sha, end_sha, started_at, completed_at, summary, raw_data, agent_mode, tool_usage_stats) FROM '$TMPDIR/activity_runs.csv' WITH CSV"
+    psql "$PG_DSN" -q -c "\COPY activity_runs(id, repo_id, start_sha, end_sha, started_at, completed_at, summary, raw_data, agent_mode, tool_usage_stats) FROM '$TMPDIR/activity_runs.csv' WITH CSV"
 fi
-COUNT=$(psql -d "$PG_DB" -tAc "SELECT COUNT(*) FROM activity_runs")
+COUNT=$(psql "$PG_DSN" -tAc "SELECT COUNT(*) FROM activity_runs")
 echo "  activity_runs: $COUNT"
 
 # Import weekly_reports
 if [ -s "$TMPDIR/weekly_reports.csv" ]; then
-    psql -d "$PG_DB" -q -c "\COPY weekly_reports(id, repo_id, year, week, week_start, week_end, summary, commit_count, metadata, agent_mode, tool_usage_stats, created_at, updated_at, source_run_id) FROM '$TMPDIR/weekly_reports.csv' WITH CSV"
+    psql "$PG_DSN" -q -c "\COPY weekly_reports(id, repo_id, year, week, week_start, week_end, summary, commit_count, metadata, agent_mode, tool_usage_stats, created_at, updated_at, source_run_id) FROM '$TMPDIR/weekly_reports.csv' WITH CSV"
 fi
-COUNT=$(psql -d "$PG_DB" -tAc "SELECT COUNT(*) FROM weekly_reports")
+COUNT=$(psql "$PG_DSN" -tAc "SELECT COUNT(*) FROM weekly_reports")
 echo "  weekly_reports: $COUNT"
 
 # Import subscribers
 if [ -s "$TMPDIR/subscribers.csv" ]; then
-    psql -d "$PG_DB" -q -c "\COPY subscribers(id, email, subscribe_all, created_at) FROM '$TMPDIR/subscribers.csv' WITH CSV"
+    psql "$PG_DSN" -q -c "\COPY subscribers(id, email, subscribe_all, created_at) FROM '$TMPDIR/subscribers.csv' WITH CSV"
 fi
-COUNT=$(psql -d "$PG_DB" -tAc "SELECT COUNT(*) FROM subscribers")
+COUNT=$(psql "$PG_DSN" -tAc "SELECT COUNT(*) FROM subscribers")
 echo "  subscribers: $COUNT"
 
 # Import subscriptions
 if [ -s "$TMPDIR/subscriptions.csv" ]; then
-    psql -d "$PG_DB" -q -c "\COPY subscriptions(id, subscriber_id, repo_id, created_at) FROM '$TMPDIR/subscriptions.csv' WITH CSV"
+    psql "$PG_DSN" -q -c "\COPY subscriptions(id, subscriber_id, repo_id, created_at) FROM '$TMPDIR/subscriptions.csv' WITH CSV"
 fi
-COUNT=$(psql -d "$PG_DB" -tAc "SELECT COUNT(*) FROM subscriptions")
+COUNT=$(psql "$PG_DSN" -tAc "SELECT COUNT(*) FROM subscriptions")
 echo "  subscriptions: $COUNT"
 
 # Import newsletter_sends
 if [ -s "$TMPDIR/newsletter_sends.csv" ]; then
-    psql -d "$PG_DB" -q -c "\COPY newsletter_sends(id, subscriber_id, activity_run_id, sent_at, sendgrid_message_id) FROM '$TMPDIR/newsletter_sends.csv' WITH CSV"
+    psql "$PG_DSN" -q -c "\COPY newsletter_sends(id, subscriber_id, activity_run_id, sent_at, sendgrid_message_id) FROM '$TMPDIR/newsletter_sends.csv' WITH CSV"
 fi
-COUNT=$(psql -d "$PG_DB" -tAc "SELECT COUNT(*) FROM newsletter_sends")
+COUNT=$(psql "$PG_DSN" -tAc "SELECT COUNT(*) FROM newsletter_sends")
 echo "  newsletter_sends: $COUNT"
 
 echo ""
 echo "Step 4: Resetting sequences..."
-psql -d "$PG_DB" -q <<'EOF'
+psql "$PG_DSN" -q <<'EOF'
 SELECT setval('repositories_id_seq', COALESCE((SELECT MAX(id) FROM repositories), 0) + 1, false);
 SELECT setval('admins_id_seq', COALESCE((SELECT MAX(id) FROM admins), 0) + 1, false);
 SELECT setval('activity_runs_id_seq', COALESCE((SELECT MAX(id) FROM activity_runs), 0) + 1, false);
