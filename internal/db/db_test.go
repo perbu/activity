@@ -1,72 +1,90 @@
 package db
 
 import (
+	"context"
 	"database/sql"
-	"os"
-	"path/filepath"
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// setupTestDB creates a temporary database for testing
+// setupTestDB creates a PostgreSQL container for testing
 func setupTestDB(t *testing.T) (*DB, func()) {
 	t.Helper()
 
-	// Create a temporary directory for the database
-	tmpDir, err := os.MkdirTemp("", "activity-db-test-*")
+	ctx := context.Background()
+
+	// Start PostgreSQL container
+	pgContainer, err := postgres.Run(ctx,
+		"postgres:16-alpine",
+		postgres.WithDatabase("testdb"),
+		postgres.WithUsername("testuser"),
+		postgres.WithPassword("testpass"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(60*time.Second),
+		),
+	)
 	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
+		t.Fatalf("failed to start postgres container: %v", err)
 	}
 
-	db, err := Open(tmpDir)
+	// Get connection string
+	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		pgContainer.Terminate(ctx)
+		t.Fatalf("failed to get connection string: %v", err)
+	}
+
+	db, err := Open(OpenConfig{
+		DSN:          connStr,
+		MaxOpenConns: 5,
+		MaxIdleConns: 2,
+	})
+	if err != nil {
+		pgContainer.Terminate(ctx)
 		t.Fatalf("failed to open database: %v", err)
 	}
 
 	cleanup := func() {
 		db.Close()
-		os.RemoveAll(tmpDir)
+		pgContainer.Terminate(ctx)
 	}
 
 	return db, cleanup
 }
 
 func TestOpen(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "activity-db-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	db, err := Open(tmpDir)
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-	defer db.Close()
-
-	// Verify database file was created
-	dbPath := filepath.Join(tmpDir, "activity.db")
-	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		t.Error("database file was not created")
-	}
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
 
 	// Verify migrations ran by checking tables exist
 	tables := []string{"goose_db_version", "repositories", "activity_runs", "subscribers", "subscriptions", "newsletter_sends", "weekly_reports", "admins"}
 	for _, table := range tables {
-		var name string
-		err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&name)
+		var tableName string
+		err := db.QueryRow(fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_name = '%s'", table)).Scan(&tableName)
 		if err != nil {
 			t.Errorf("table %q does not exist: %v", table, err)
 		}
 	}
 }
 
-func TestOpen_InvalidPath(t *testing.T) {
-	// Try to open a database in a path that doesn't exist and can't be created
-	_, err := Open("/nonexistent/deeply/nested/path/that/should/not/exist")
+func TestOpen_InvalidDSN(t *testing.T) {
+	_, err := Open(OpenConfig{DSN: "postgres://invalid:5432/notexist?sslmode=disable"})
 	if err == nil {
-		t.Error("Open() expected error for invalid path, got nil")
+		t.Error("Open() expected error for invalid DSN, got nil")
+	}
+}
+
+func TestOpen_EmptyDSN(t *testing.T) {
+	_, err := Open(OpenConfig{DSN: ""})
+	if err == nil {
+		t.Error("Open() expected error for empty DSN, got nil")
 	}
 }
 
@@ -411,9 +429,7 @@ func TestActivityRun_GetLatest(t *testing.T) {
 		t.Error("expected nil for no runs, got non-nil")
 	}
 
-	// Create some runs - we can't rely on timestamps, so just verify we get the most recent one
-	// The query orders by started_at DESC, which defaults to CURRENT_TIMESTAMP
-	// Create multiple runs and verify we get one back
+	// Create some runs
 	db.CreateActivityRun(repo.ID, "first", "first-end")
 	db.CreateActivityRun(repo.ID, "second", "second-end")
 
@@ -424,8 +440,6 @@ func TestActivityRun_GetLatest(t *testing.T) {
 	if run == nil {
 		t.Error("expected a run, got nil")
 	}
-	// We can't guarantee which one is "latest" due to timestamp precision
-	// but we should get one of them
 	if run.StartSHA != "first" && run.StartSHA != "second" {
 		t.Errorf("got unexpected run with StartSHA = %q", run.StartSHA)
 	}
@@ -1134,6 +1148,140 @@ func TestWeeklyReport_Delete(t *testing.T) {
 	}
 }
 
+// Admin CRUD tests
+
+func TestAdmin_Create(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	admin, err := db.CreateAdmin("admin@example.com", "creator@example.com")
+	if err != nil {
+		t.Fatalf("CreateAdmin() error = %v", err)
+	}
+
+	if admin.ID == 0 {
+		t.Error("expected non-zero ID")
+	}
+	if admin.Email != "admin@example.com" {
+		t.Errorf("Email = %q, want %q", admin.Email, "admin@example.com")
+	}
+	if !admin.CreatedBy.Valid || admin.CreatedBy.String != "creator@example.com" {
+		t.Error("CreatedBy not set correctly")
+	}
+}
+
+func TestAdmin_Get(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	created, _ := db.CreateAdmin("admin@example.com", "")
+
+	// By ID
+	admin, err := db.GetAdmin(created.ID)
+	if err != nil {
+		t.Fatalf("GetAdmin() error = %v", err)
+	}
+	if admin.ID != created.ID {
+		t.Errorf("ID = %d, want %d", admin.ID, created.ID)
+	}
+
+	// By email
+	admin, err = db.GetAdminByEmail("admin@example.com")
+	if err != nil {
+		t.Fatalf("GetAdminByEmail() error = %v", err)
+	}
+	if admin.ID != created.ID {
+		t.Errorf("ID = %d, want %d", admin.ID, created.ID)
+	}
+}
+
+func TestAdmin_IsAdmin(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Not an admin yet
+	isAdmin, err := db.IsAdmin("admin@example.com")
+	if err != nil {
+		t.Fatalf("IsAdmin() error = %v", err)
+	}
+	if isAdmin {
+		t.Error("IsAdmin() should be false")
+	}
+
+	// Create admin
+	db.CreateAdmin("admin@example.com", "")
+
+	isAdmin, err = db.IsAdmin("admin@example.com")
+	if err != nil {
+		t.Fatalf("IsAdmin() error = %v", err)
+	}
+	if !isAdmin {
+		t.Error("IsAdmin() should be true")
+	}
+}
+
+func TestAdmin_Count(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	count, err := db.AdminCount()
+	if err != nil {
+		t.Fatalf("AdminCount() error = %v", err)
+	}
+	if count != 0 {
+		t.Errorf("AdminCount() = %d, want 0", count)
+	}
+
+	db.CreateAdmin("admin1@example.com", "")
+	db.CreateAdmin("admin2@example.com", "")
+
+	count, err = db.AdminCount()
+	if err != nil {
+		t.Fatalf("AdminCount() error = %v", err)
+	}
+	if count != 2 {
+		t.Errorf("AdminCount() = %d, want 2", count)
+	}
+}
+
+func TestAdmin_List(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	db.CreateAdmin("zebra@example.com", "")
+	db.CreateAdmin("alpha@example.com", "")
+
+	admins, err := db.ListAdmins()
+	if err != nil {
+		t.Fatalf("ListAdmins() error = %v", err)
+	}
+
+	if len(admins) != 2 {
+		t.Errorf("ListAdmins() returned %d admins, want 2", len(admins))
+	}
+
+	// Should be ordered by email
+	if admins[0].Email != "alpha@example.com" {
+		t.Errorf("first email = %q, want %q", admins[0].Email, "alpha@example.com")
+	}
+}
+
+func TestAdmin_Delete(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	admin, _ := db.CreateAdmin("admin@example.com", "")
+
+	if err := db.DeleteAdmin(admin.ID); err != nil {
+		t.Fatalf("DeleteAdmin() error = %v", err)
+	}
+
+	_, err := db.GetAdmin(admin.ID)
+	if err == nil {
+		t.Error("GetAdmin() after delete expected error, got nil")
+	}
+}
+
 // Complex query tests
 
 func TestGetUnsentActivityRuns_SubscribeAll(t *testing.T) {
@@ -1261,241 +1409,45 @@ func TestGetReposForSubscriber_SpecificRepos(t *testing.T) {
 	}
 }
 
-// Delete tests with related records
+// Cascade delete tests
 
-func TestRepository_DeleteWithActivityRuns(t *testing.T) {
+func TestRepository_DeleteCascadesActivityRuns(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
 	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
-	db.CreateActivityRun(repo.ID, "abc", "def")
+	run, _ := db.CreateActivityRun(repo.ID, "abc", "def")
 
-	// Delete the repository - should succeed even with related activity runs
-	// Note: SQLite foreign key constraints are not enforced by default,
-	// so this will leave orphaned activity runs
+	// Delete the repository - activity runs should cascade delete
 	err := db.DeleteRepository(repo.ID)
 	if err != nil {
 		t.Fatalf("DeleteRepository() error = %v", err)
 	}
 
-	// Repository should be deleted
-	_, err = db.GetRepository(repo.ID)
+	// Activity run should be deleted too
+	_, err = db.GetActivityRun(run.ID)
 	if err == nil {
-		t.Error("repository should have been deleted")
+		t.Error("activity run should have been cascade deleted")
 	}
 }
 
-func TestSubscriber_DeleteWithSubscriptions(t *testing.T) {
+func TestSubscriber_DeleteCascadesSubscriptions(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
 	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
 	sub, _ := db.CreateSubscriber("test@example.com", false)
-	db.CreateSubscription(sub.ID, repo.ID)
+	subscription, _ := db.CreateSubscription(sub.ID, repo.ID)
 
-	// Delete the subscriber - should succeed even with related subscriptions
-	// Note: SQLite foreign key constraints are not enforced by default
+	// Delete the subscriber - subscriptions should cascade delete
 	err := db.DeleteSubscriber(sub.ID)
 	if err != nil {
 		t.Fatalf("DeleteSubscriber() error = %v", err)
 	}
 
-	// Subscriber should be deleted
-	_, err = db.GetSubscriber(sub.ID)
+	// Subscription should be deleted too
+	_, err = db.GetSubscription(subscription.ID)
 	if err == nil {
-		t.Error("subscriber should have been deleted")
-	}
-}
-
-func TestMigrations_Idempotent(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "activity-db-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	// Open once - runs migrations
-	db1, err := Open(tmpDir)
-	if err != nil {
-		t.Fatalf("first Open() error = %v", err)
-	}
-	db1.Close()
-
-	// Open again - should not error (migrations already applied)
-	db2, err := Open(tmpDir)
-	if err != nil {
-		t.Fatalf("second Open() error = %v", err)
-	}
-	defer db2.Close()
-
-	// Verify we can still use the database
-	_, err = db2.CreateRepository("test", "https://example.com", "main", false, sql.NullString{})
-	if err != nil {
-		t.Fatalf("CreateRepository() after reopen error = %v", err)
-	}
-}
-
-func TestMigrations_LegacyUpgrade(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "activity-db-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	dbPath := filepath.Join(tmpDir, "activity.db")
-
-	// Create a database with the old migration system at version 8
-	sqlDB, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		t.Fatalf("failed to open database: %v", err)
-	}
-
-	// Create old migrations table
-	_, err = sqlDB.Exec(`
-		CREATE TABLE migrations (
-			version INTEGER PRIMARY KEY,
-			applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)
-	`)
-	if err != nil {
-		t.Fatalf("failed to create migrations table: %v", err)
-	}
-
-	// Insert version 8
-	_, err = sqlDB.Exec("INSERT INTO migrations (version) VALUES (8)")
-	if err != nil {
-		t.Fatalf("failed to insert migration version: %v", err)
-	}
-
-	// Create all the tables that would exist at version 8
-	_, err = sqlDB.Exec(`
-		CREATE TABLE repositories (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT UNIQUE NOT NULL,
-			url TEXT NOT NULL,
-			branch TEXT NOT NULL DEFAULT 'main',
-			active BOOLEAN NOT NULL DEFAULT 1,
-			private BOOLEAN NOT NULL DEFAULT 0,
-			description TEXT,
-			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			last_run_at DATETIME,
-			last_run_sha TEXT
-		);
-
-		CREATE TABLE activity_runs (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			repo_id INTEGER NOT NULL,
-			start_sha TEXT NOT NULL,
-			end_sha TEXT NOT NULL,
-			started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			completed_at DATETIME,
-			summary TEXT,
-			raw_data TEXT,
-			agent_mode BOOLEAN DEFAULT 0,
-			tool_usage_stats TEXT,
-			FOREIGN KEY (repo_id) REFERENCES repositories(id) ON DELETE CASCADE
-		);
-
-		CREATE TABLE subscribers (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			email TEXT UNIQUE NOT NULL,
-			subscribe_all BOOLEAN NOT NULL DEFAULT 0,
-			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-		);
-
-		CREATE TABLE subscriptions (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			subscriber_id INTEGER NOT NULL,
-			repo_id INTEGER NOT NULL,
-			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (subscriber_id) REFERENCES subscribers(id) ON DELETE CASCADE,
-			FOREIGN KEY (repo_id) REFERENCES repositories(id) ON DELETE CASCADE,
-			UNIQUE(subscriber_id, repo_id)
-		);
-
-		CREATE TABLE newsletter_sends (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			subscriber_id INTEGER NOT NULL,
-			activity_run_id INTEGER NOT NULL,
-			sent_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			sendgrid_message_id TEXT,
-			FOREIGN KEY (subscriber_id) REFERENCES subscribers(id) ON DELETE CASCADE,
-			FOREIGN KEY (activity_run_id) REFERENCES activity_runs(id) ON DELETE CASCADE,
-			UNIQUE(subscriber_id, activity_run_id)
-		);
-
-		CREATE TABLE weekly_reports (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			repo_id INTEGER NOT NULL,
-			year INTEGER NOT NULL,
-			week INTEGER NOT NULL,
-			week_start DATE NOT NULL,
-			week_end DATE NOT NULL,
-			summary TEXT,
-			commit_count INTEGER NOT NULL DEFAULT 0,
-			metadata TEXT,
-			agent_mode BOOLEAN DEFAULT 0,
-			tool_usage_stats TEXT,
-			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			source_run_id INTEGER,
-			FOREIGN KEY (repo_id) REFERENCES repositories(id) ON DELETE CASCADE,
-			FOREIGN KEY (source_run_id) REFERENCES activity_runs(id) ON DELETE SET NULL,
-			UNIQUE(repo_id, year, week)
-		);
-
-		CREATE TABLE admins (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			email TEXT UNIQUE NOT NULL,
-			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			created_by TEXT
-		);
-	`)
-	if err != nil {
-		t.Fatalf("failed to create tables: %v", err)
-	}
-
-	// Insert some test data
-	_, err = sqlDB.Exec(`INSERT INTO repositories (name, url, branch) VALUES ('test-repo', 'https://example.com', 'main')`)
-	if err != nil {
-		t.Fatalf("failed to insert test data: %v", err)
-	}
-
-	sqlDB.Close()
-
-	// Now open with our new migration system
-	db, err := Open(tmpDir)
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-	defer db.Close()
-
-	// Verify old migrations table is gone
-	var tableName string
-	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='migrations'").Scan(&tableName)
-	if err != sql.ErrNoRows {
-		t.Error("old migrations table should have been dropped")
-	}
-
-	// Verify goose_db_version table exists
-	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='goose_db_version'").Scan(&tableName)
-	if err != nil {
-		t.Errorf("goose_db_version table should exist: %v", err)
-	}
-
-	// Verify data was preserved
-	repo, err := db.GetRepositoryByName("test-repo")
-	if err != nil {
-		t.Fatalf("GetRepositoryByName() error = %v", err)
-	}
-	if repo.Name != "test-repo" {
-		t.Errorf("Name = %q, want %q", repo.Name, "test-repo")
-	}
-
-	// Verify we can still use the database
-	_, err = db.CreateRepository("new-repo", "https://example.com/new", "main", false, sql.NullString{})
-	if err != nil {
-		t.Fatalf("CreateRepository() after upgrade error = %v", err)
+		t.Error("subscription should have been cascade deleted")
 	}
 }

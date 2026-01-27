@@ -79,9 +79,9 @@ func run() error {
 	setupLogger(cfg.Debug)
 	slog.Info("starting activity", "version", strings.TrimSpace(version))
 
-	// Require data directory to be specified
+	// Require data directory for git repository storage
 	if cfg.DataDir == "" {
-		return fmt.Errorf("data directory must be specified via --data-dir flag or config file")
+		return fmt.Errorf("data directory must be specified via --data-dir flag or config file (used for git repository storage)")
 	}
 
 	// Ensure data directory exists
@@ -89,8 +89,19 @@ func run() error {
 		return err
 	}
 
+	// Require database DSN to be specified
+	dsn := cfg.GetDatabaseDSN()
+	if dsn == "" {
+		return fmt.Errorf("database DSN must be specified via config file or DATABASE_URL environment variable")
+	}
+
 	// Open database
-	database, err := db.Open(cfg.DataDir)
+	database, err := db.Open(db.OpenConfig{
+		DSN:                    dsn,
+		MaxOpenConns:           cfg.Database.MaxOpenConns,
+		MaxIdleConns:           cfg.Database.MaxIdleConns,
+		ConnMaxLifetimeSeconds: cfg.Database.ConnMaxLifetimeSeconds,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}

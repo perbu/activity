@@ -10,17 +10,14 @@ import (
 
 // CreateRepository inserts a new repository into the database
 func (db *DB) CreateRepository(name, url, branch string, private bool, description sql.NullString) (*Repository, error) {
-	result, err := db.Exec(`
+	var id int64
+	err := db.QueryRow(`
 		INSERT INTO repositories (name, url, branch, active, private, description)
-		VALUES (?, ?, ?, 1, ?, ?)
-	`, name, url, branch, private, description)
+		VALUES ($1, $2, $3, true, $4, $5)
+		RETURNING id
+	`, name, url, branch, private, description).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repository: %w", err)
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get repository ID: %w", err)
 	}
 
 	return db.GetRepository(id)
@@ -30,9 +27,9 @@ func (db *DB) CreateRepository(name, url, branch string, private bool, descripti
 func (db *DB) GetRepository(id int64) (*Repository, error) {
 	repo := &Repository{}
 	err := db.QueryRow(`
-		SELECT id, name, url, branch, active, COALESCE(private, 0), description, created_at, updated_at, last_run_at, last_run_sha
+		SELECT id, name, url, branch, active, COALESCE(private, false), description, created_at, updated_at, last_run_at, last_run_sha
 		FROM repositories
-		WHERE id = ?
+		WHERE id = $1
 	`, id).Scan(
 		&repo.ID, &repo.Name, &repo.URL, &repo.Branch,
 		&repo.Active, &repo.Private, &repo.Description, &repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
@@ -50,9 +47,9 @@ func (db *DB) GetRepository(id int64) (*Repository, error) {
 func (db *DB) GetRepositoryByName(name string) (*Repository, error) {
 	repo := &Repository{}
 	err := db.QueryRow(`
-		SELECT id, name, url, branch, active, COALESCE(private, 0), description, created_at, updated_at, last_run_at, last_run_sha
+		SELECT id, name, url, branch, active, COALESCE(private, false), description, created_at, updated_at, last_run_at, last_run_sha
 		FROM repositories
-		WHERE name = ?
+		WHERE name = $1
 	`, name).Scan(
 		&repo.ID, &repo.Name, &repo.URL, &repo.Branch,
 		&repo.Active, &repo.Private, &repo.Description, &repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
@@ -69,13 +66,13 @@ func (db *DB) GetRepositoryByName(name string) (*Repository, error) {
 // ListRepositories retrieves all repositories, optionally filtered by active status
 func (db *DB) ListRepositories(activeOnly *bool) ([]*Repository, error) {
 	query := `
-		SELECT id, name, url, branch, active, COALESCE(private, 0), description, created_at, updated_at, last_run_at, last_run_sha
+		SELECT id, name, url, branch, active, COALESCE(private, false), description, created_at, updated_at, last_run_at, last_run_sha
 		FROM repositories
 	`
 	var args []interface{}
 
 	if activeOnly != nil {
-		query += " WHERE active = ?"
+		query += " WHERE active = $1"
 		args = append(args, *activeOnly)
 	}
 
@@ -108,8 +105,8 @@ func (db *DB) UpdateRepository(repo *Repository) error {
 	repo.UpdatedAt = time.Now()
 	_, err := db.Exec(`
 		UPDATE repositories
-		SET name = ?, url = ?, branch = ?, active = ?, private = ?, description = ?, updated_at = ?, last_run_at = ?, last_run_sha = ?
-		WHERE id = ?
+		SET name = $1, url = $2, branch = $3, active = $4, private = $5, description = $6, updated_at = $7, last_run_at = $8, last_run_sha = $9
+		WHERE id = $10
 	`, repo.Name, repo.URL, repo.Branch, repo.Active, repo.Private, repo.Description, repo.UpdatedAt, repo.LastRunAt, repo.LastRunSHA, repo.ID)
 	if err != nil {
 		return fmt.Errorf("failed to update repository: %w", err)
@@ -119,7 +116,7 @@ func (db *DB) UpdateRepository(repo *Repository) error {
 
 // DeleteRepository deletes a repository by ID
 func (db *DB) DeleteRepository(id int64) error {
-	_, err := db.Exec("DELETE FROM repositories WHERE id = ?", id)
+	_, err := db.Exec("DELETE FROM repositories WHERE id = $1", id)
 	if err != nil {
 		return fmt.Errorf("failed to delete repository: %w", err)
 	}
@@ -130,8 +127,8 @@ func (db *DB) DeleteRepository(id int64) error {
 func (db *DB) SetRepositoryActive(id int64, active bool) error {
 	_, err := db.Exec(`
 		UPDATE repositories
-		SET active = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
+		SET active = $1, updated_at = NOW()
+		WHERE id = $2
 	`, active, id)
 	if err != nil {
 		return fmt.Errorf("failed to set repository active status: %w", err)
@@ -143,17 +140,14 @@ func (db *DB) SetRepositoryActive(id int64, active bool) error {
 
 // CreateActivityRun inserts a new activity run into the database
 func (db *DB) CreateActivityRun(repoID int64, startSHA, endSHA string) (*ActivityRun, error) {
-	result, err := db.Exec(`
+	var id int64
+	err := db.QueryRow(`
 		INSERT INTO activity_runs (repo_id, start_sha, end_sha)
-		VALUES (?, ?, ?)
-	`, repoID, startSHA, endSHA)
+		VALUES ($1, $2, $3)
+		RETURNING id
+	`, repoID, startSHA, endSHA).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create activity run: %w", err)
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get activity run ID: %w", err)
 	}
 
 	return db.GetActivityRun(id)
@@ -164,9 +158,9 @@ func (db *DB) GetActivityRun(id int64) (*ActivityRun, error) {
 	run := &ActivityRun{}
 	err := db.QueryRow(`
 		SELECT id, repo_id, start_sha, end_sha, started_at, completed_at, summary, raw_data,
-		       COALESCE(agent_mode, 0), tool_usage_stats
+		       COALESCE(agent_mode, false), tool_usage_stats
 		FROM activity_runs
-		WHERE id = ?
+		WHERE id = $1
 	`, id).Scan(
 		&run.ID, &run.RepoID, &run.StartSHA, &run.EndSHA,
 		&run.StartedAt, &run.CompletedAt, &run.Summary, &run.RawData,
@@ -186,9 +180,9 @@ func (db *DB) GetLatestActivityRun(repoID int64) (*ActivityRun, error) {
 	run := &ActivityRun{}
 	err := db.QueryRow(`
 		SELECT id, repo_id, start_sha, end_sha, started_at, completed_at, summary, raw_data,
-		       COALESCE(agent_mode, 0), tool_usage_stats
+		       COALESCE(agent_mode, false), tool_usage_stats
 		FROM activity_runs
-		WHERE repo_id = ?
+		WHERE repo_id = $1
 		ORDER BY started_at DESC
 		LIMIT 1
 	`, repoID).Scan(
@@ -209,8 +203,8 @@ func (db *DB) GetLatestActivityRun(repoID int64) (*ActivityRun, error) {
 func (db *DB) UpdateActivityRun(run *ActivityRun) error {
 	_, err := db.Exec(`
 		UPDATE activity_runs
-		SET completed_at = ?, summary = ?, raw_data = ?, agent_mode = ?, tool_usage_stats = ?
-		WHERE id = ?
+		SET completed_at = $1, summary = $2, raw_data = $3, agent_mode = $4, tool_usage_stats = $5
+		WHERE id = $6
 	`, run.CompletedAt, run.Summary, run.RawData, run.AgentMode, run.ToolUsageStats, run.ID)
 	if err != nil {
 		return fmt.Errorf("failed to update activity run: %w", err)
@@ -222,17 +216,14 @@ func (db *DB) UpdateActivityRun(run *ActivityRun) error {
 
 // CreateSubscriber inserts a new subscriber into the database
 func (db *DB) CreateSubscriber(email string, subscribeAll bool) (*Subscriber, error) {
-	result, err := db.Exec(`
+	var id int64
+	err := db.QueryRow(`
 		INSERT INTO subscribers (email, subscribe_all)
-		VALUES (?, ?)
-	`, email, subscribeAll)
+		VALUES ($1, $2)
+		RETURNING id
+	`, email, subscribeAll).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create subscriber: %w", err)
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get subscriber ID: %w", err)
 	}
 
 	return db.GetSubscriber(id)
@@ -244,7 +235,7 @@ func (db *DB) GetSubscriber(id int64) (*Subscriber, error) {
 	err := db.QueryRow(`
 		SELECT id, email, subscribe_all, created_at
 		FROM subscribers
-		WHERE id = ?
+		WHERE id = $1
 	`, id).Scan(&sub.ID, &sub.Email, &sub.SubscribeAll, &sub.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -261,7 +252,7 @@ func (db *DB) GetSubscriberByEmail(email string) (*Subscriber, error) {
 	err := db.QueryRow(`
 		SELECT id, email, subscribe_all, created_at
 		FROM subscribers
-		WHERE email = ?
+		WHERE email = $1
 	`, email).Scan(&sub.ID, &sub.Email, &sub.SubscribeAll, &sub.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -300,8 +291,8 @@ func (db *DB) ListSubscribers() ([]*Subscriber, error) {
 func (db *DB) UpdateSubscriber(sub *Subscriber) error {
 	_, err := db.Exec(`
 		UPDATE subscribers
-		SET email = ?, subscribe_all = ?
-		WHERE id = ?
+		SET email = $1, subscribe_all = $2
+		WHERE id = $3
 	`, sub.Email, sub.SubscribeAll, sub.ID)
 	if err != nil {
 		return fmt.Errorf("failed to update subscriber: %w", err)
@@ -311,7 +302,7 @@ func (db *DB) UpdateSubscriber(sub *Subscriber) error {
 
 // DeleteSubscriber deletes a subscriber by ID
 func (db *DB) DeleteSubscriber(id int64) error {
-	_, err := db.Exec("DELETE FROM subscribers WHERE id = ?", id)
+	_, err := db.Exec("DELETE FROM subscribers WHERE id = $1", id)
 	if err != nil {
 		return fmt.Errorf("failed to delete subscriber: %w", err)
 	}
@@ -322,17 +313,14 @@ func (db *DB) DeleteSubscriber(id int64) error {
 
 // CreateSubscription creates a subscription between a subscriber and a repository
 func (db *DB) CreateSubscription(subscriberID, repoID int64) (*Subscription, error) {
-	result, err := db.Exec(`
+	var id int64
+	err := db.QueryRow(`
 		INSERT INTO subscriptions (subscriber_id, repo_id)
-		VALUES (?, ?)
-	`, subscriberID, repoID)
+		VALUES ($1, $2)
+		RETURNING id
+	`, subscriberID, repoID).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create subscription: %w", err)
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get subscription ID: %w", err)
 	}
 
 	return db.GetSubscription(id)
@@ -344,7 +332,7 @@ func (db *DB) GetSubscription(id int64) (*Subscription, error) {
 	err := db.QueryRow(`
 		SELECT id, subscriber_id, repo_id, created_at
 		FROM subscriptions
-		WHERE id = ?
+		WHERE id = $1
 	`, id).Scan(&sub.ID, &sub.SubscriberID, &sub.RepoID, &sub.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -361,7 +349,7 @@ func (db *DB) GetSubscriptionBySubscriberAndRepo(subscriberID, repoID int64) (*S
 	err := db.QueryRow(`
 		SELECT id, subscriber_id, repo_id, created_at
 		FROM subscriptions
-		WHERE subscriber_id = ? AND repo_id = ?
+		WHERE subscriber_id = $1 AND repo_id = $2
 	`, subscriberID, repoID).Scan(&sub.ID, &sub.SubscriberID, &sub.RepoID, &sub.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -377,7 +365,7 @@ func (db *DB) ListSubscriptionsBySubscriber(subscriberID int64) ([]*Subscription
 	rows, err := db.Query(`
 		SELECT id, subscriber_id, repo_id, created_at
 		FROM subscriptions
-		WHERE subscriber_id = ?
+		WHERE subscriber_id = $1
 		ORDER BY created_at
 	`, subscriberID)
 	if err != nil {
@@ -399,7 +387,7 @@ func (db *DB) ListSubscriptionsBySubscriber(subscriberID int64) ([]*Subscription
 
 // DeleteSubscription deletes a subscription by ID
 func (db *DB) DeleteSubscription(id int64) error {
-	_, err := db.Exec("DELETE FROM subscriptions WHERE id = ?", id)
+	_, err := db.Exec("DELETE FROM subscriptions WHERE id = $1", id)
 	if err != nil {
 		return fmt.Errorf("failed to delete subscription: %w", err)
 	}
@@ -408,7 +396,7 @@ func (db *DB) DeleteSubscription(id int64) error {
 
 // DeleteSubscriptionBySubscriberAndRepo deletes a subscription by subscriber and repo
 func (db *DB) DeleteSubscriptionBySubscriberAndRepo(subscriberID, repoID int64) error {
-	_, err := db.Exec("DELETE FROM subscriptions WHERE subscriber_id = ? AND repo_id = ?", subscriberID, repoID)
+	_, err := db.Exec("DELETE FROM subscriptions WHERE subscriber_id = $1 AND repo_id = $2", subscriberID, repoID)
 	if err != nil {
 		return fmt.Errorf("failed to delete subscription: %w", err)
 	}
@@ -424,17 +412,14 @@ func (db *DB) CreateNewsletterSend(subscriberID, activityRunID int64, messageID 
 		msgID = messageID
 	}
 
-	result, err := db.Exec(`
+	var id int64
+	err := db.QueryRow(`
 		INSERT INTO newsletter_sends (subscriber_id, activity_run_id, sendgrid_message_id)
-		VALUES (?, ?, ?)
-	`, subscriberID, activityRunID, msgID)
+		VALUES ($1, $2, $3)
+		RETURNING id
+	`, subscriberID, activityRunID, msgID).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create newsletter send: %w", err)
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get newsletter send ID: %w", err)
 	}
 
 	return db.GetNewsletterSend(id)
@@ -446,7 +431,7 @@ func (db *DB) GetNewsletterSend(id int64) (*NewsletterSend, error) {
 	err := db.QueryRow(`
 		SELECT id, subscriber_id, activity_run_id, sent_at, sendgrid_message_id
 		FROM newsletter_sends
-		WHERE id = ?
+		WHERE id = $1
 	`, id).Scan(&ns.ID, &ns.SubscriberID, &ns.ActivityRunID, &ns.SentAt, &ns.SendGridMessageID)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -462,7 +447,7 @@ func (db *DB) HasNewsletterBeenSent(subscriberID, activityRunID int64) (bool, er
 	var count int
 	err := db.QueryRow(`
 		SELECT COUNT(*) FROM newsletter_sends
-		WHERE subscriber_id = ? AND activity_run_id = ?
+		WHERE subscriber_id = $1 AND activity_run_id = $2
 	`, subscriberID, activityRunID).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("failed to check newsletter send: %w", err)
@@ -486,12 +471,12 @@ func (db *DB) GetUnsentActivityRuns(subscriberID int64, since time.Time) ([]*Act
 		// Get all completed activity runs since the given time that haven't been sent
 		query = `
 			SELECT ar.id, ar.repo_id, ar.start_sha, ar.end_sha, ar.started_at, ar.completed_at,
-			       ar.summary, ar.raw_data, COALESCE(ar.agent_mode, 0), ar.tool_usage_stats
+			       ar.summary, ar.raw_data, COALESCE(ar.agent_mode, false), ar.tool_usage_stats
 			FROM activity_runs ar
 			WHERE ar.completed_at IS NOT NULL
-			  AND ar.completed_at >= ?
+			  AND ar.completed_at >= $1
 			  AND ar.id NOT IN (
-			      SELECT activity_run_id FROM newsletter_sends WHERE subscriber_id = ?
+			      SELECT activity_run_id FROM newsletter_sends WHERE subscriber_id = $2
 			  )
 			ORDER BY ar.completed_at DESC
 		`
@@ -500,14 +485,14 @@ func (db *DB) GetUnsentActivityRuns(subscriberID int64, since time.Time) ([]*Act
 		// Get activity runs for subscribed repos only
 		query = `
 			SELECT ar.id, ar.repo_id, ar.start_sha, ar.end_sha, ar.started_at, ar.completed_at,
-			       ar.summary, ar.raw_data, COALESCE(ar.agent_mode, 0), ar.tool_usage_stats
+			       ar.summary, ar.raw_data, COALESCE(ar.agent_mode, false), ar.tool_usage_stats
 			FROM activity_runs ar
 			INNER JOIN subscriptions s ON ar.repo_id = s.repo_id
-			WHERE s.subscriber_id = ?
+			WHERE s.subscriber_id = $1
 			  AND ar.completed_at IS NOT NULL
-			  AND ar.completed_at >= ?
+			  AND ar.completed_at >= $2
 			  AND ar.id NOT IN (
-			      SELECT activity_run_id FROM newsletter_sends WHERE subscriber_id = ?
+			      SELECT activity_run_id FROM newsletter_sends WHERE subscriber_id = $3
 			  )
 			ORDER BY ar.completed_at DESC
 		`
@@ -551,10 +536,10 @@ func (db *DB) GetReposForSubscriber(subscriberID int64) ([]*Repository, error) {
 
 	// Return only subscribed repos
 	rows, err := db.Query(`
-		SELECT r.id, r.name, r.url, r.branch, r.active, COALESCE(r.private, 0), r.description, r.created_at, r.updated_at, r.last_run_at, r.last_run_sha
+		SELECT r.id, r.name, r.url, r.branch, r.active, COALESCE(r.private, false), r.description, r.created_at, r.updated_at, r.last_run_at, r.last_run_sha
 		FROM repositories r
 		INNER JOIN subscriptions s ON r.id = s.repo_id
-		WHERE s.subscriber_id = ?
+		WHERE s.subscriber_id = $1
 		ORDER BY r.name
 	`, subscriberID)
 	if err != nil {
@@ -581,19 +566,16 @@ func (db *DB) GetReposForSubscriber(subscriberID int64) ([]*Repository, error) {
 
 // CreateWeeklyReport inserts a new weekly report into the database
 func (db *DB) CreateWeeklyReport(report *WeeklyReport) (*WeeklyReport, error) {
-	result, err := db.Exec(`
+	var id int64
+	err := db.QueryRow(`
 		INSERT INTO weekly_reports (repo_id, year, week, week_start, week_end, summary, commit_count, metadata, agent_mode, tool_usage_stats, source_run_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		RETURNING id
 	`, report.RepoID, report.Year, report.Week, report.WeekStart, report.WeekEnd,
 		report.Summary, report.CommitCount, report.Metadata, report.AgentMode,
-		report.ToolUsageStats, report.SourceRunID)
+		report.ToolUsageStats, report.SourceRunID).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create weekly report: %w", err)
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get weekly report ID: %w", err)
 	}
 
 	return db.GetWeeklyReport(id)
@@ -604,9 +586,9 @@ func (db *DB) GetWeeklyReport(id int64) (*WeeklyReport, error) {
 	report := &WeeklyReport{}
 	err := db.QueryRow(`
 		SELECT id, repo_id, year, week, week_start, week_end, summary, commit_count,
-		       metadata, COALESCE(agent_mode, 0), tool_usage_stats, created_at, updated_at, source_run_id
+		       metadata, COALESCE(agent_mode, false), tool_usage_stats, created_at, updated_at, source_run_id
 		FROM weekly_reports
-		WHERE id = ?
+		WHERE id = $1
 	`, id).Scan(
 		&report.ID, &report.RepoID, &report.Year, &report.Week,
 		&report.WeekStart, &report.WeekEnd, &report.Summary, &report.CommitCount,
@@ -627,9 +609,9 @@ func (db *DB) GetWeeklyReportByRepoAndWeek(repoID int64, year, week int) (*Weekl
 	report := &WeeklyReport{}
 	err := db.QueryRow(`
 		SELECT id, repo_id, year, week, week_start, week_end, summary, commit_count,
-		       metadata, COALESCE(agent_mode, 0), tool_usage_stats, created_at, updated_at, source_run_id
+		       metadata, COALESCE(agent_mode, false), tool_usage_stats, created_at, updated_at, source_run_id
 		FROM weekly_reports
-		WHERE repo_id = ? AND year = ? AND week = ?
+		WHERE repo_id = $1 AND year = $2 AND week = $3
 	`, repoID, year, week).Scan(
 		&report.ID, &report.RepoID, &report.Year, &report.Week,
 		&report.WeekStart, &report.WeekEnd, &report.Summary, &report.CommitCount,
@@ -650,9 +632,9 @@ func (db *DB) GetLatestWeeklyReport(repoID int64) (*WeeklyReport, error) {
 	report := &WeeklyReport{}
 	err := db.QueryRow(`
 		SELECT id, repo_id, year, week, week_start, week_end, summary, commit_count,
-		       metadata, COALESCE(agent_mode, 0), tool_usage_stats, created_at, updated_at, source_run_id
+		       metadata, COALESCE(agent_mode, false), tool_usage_stats, created_at, updated_at, source_run_id
 		FROM weekly_reports
-		WHERE repo_id = ?
+		WHERE repo_id = $1
 		ORDER BY year DESC, week DESC
 		LIMIT 1
 	`, repoID).Scan(
@@ -678,18 +660,18 @@ func (db *DB) ListWeeklyReportsByRepo(repoID int64, year *int) ([]*WeeklyReport,
 	if year != nil {
 		query = `
 			SELECT id, repo_id, year, week, week_start, week_end, summary, commit_count,
-			       metadata, COALESCE(agent_mode, 0), tool_usage_stats, created_at, updated_at, source_run_id
+			       metadata, COALESCE(agent_mode, false), tool_usage_stats, created_at, updated_at, source_run_id
 			FROM weekly_reports
-			WHERE repo_id = ? AND year = ?
+			WHERE repo_id = $1 AND year = $2
 			ORDER BY year DESC, week DESC
 		`
 		args = []interface{}{repoID, *year}
 	} else {
 		query = `
 			SELECT id, repo_id, year, week, week_start, week_end, summary, commit_count,
-			       metadata, COALESCE(agent_mode, 0), tool_usage_stats, created_at, updated_at, source_run_id
+			       metadata, COALESCE(agent_mode, false), tool_usage_stats, created_at, updated_at, source_run_id
 			FROM weekly_reports
-			WHERE repo_id = ?
+			WHERE repo_id = $1
 			ORDER BY year DESC, week DESC
 		`
 		args = []interface{}{repoID}
@@ -726,16 +708,16 @@ func (db *DB) ListAllWeeklyReports(year *int) ([]*WeeklyReport, error) {
 	if year != nil {
 		query = `
 			SELECT id, repo_id, year, week, week_start, week_end, summary, commit_count,
-			       metadata, COALESCE(agent_mode, 0), tool_usage_stats, created_at, updated_at, source_run_id
+			       metadata, COALESCE(agent_mode, false), tool_usage_stats, created_at, updated_at, source_run_id
 			FROM weekly_reports
-			WHERE year = ?
+			WHERE year = $1
 			ORDER BY year DESC, week DESC, repo_id
 		`
 		args = []interface{}{*year}
 	} else {
 		query = `
 			SELECT id, repo_id, year, week, week_start, week_end, summary, commit_count,
-			       metadata, COALESCE(agent_mode, 0), tool_usage_stats, created_at, updated_at, source_run_id
+			       metadata, COALESCE(agent_mode, false), tool_usage_stats, created_at, updated_at, source_run_id
 			FROM weekly_reports
 			ORDER BY year DESC, week DESC, repo_id
 		`
@@ -769,9 +751,9 @@ func (db *DB) UpdateWeeklyReport(report *WeeklyReport) error {
 	report.UpdatedAt = time.Now()
 	_, err := db.Exec(`
 		UPDATE weekly_reports
-		SET summary = ?, commit_count = ?, metadata = ?, agent_mode = ?,
-		    tool_usage_stats = ?, updated_at = ?, source_run_id = ?
-		WHERE id = ?
+		SET summary = $1, commit_count = $2, metadata = $3, agent_mode = $4,
+		    tool_usage_stats = $5, updated_at = $6, source_run_id = $7
+		WHERE id = $8
 	`, report.Summary, report.CommitCount, report.Metadata, report.AgentMode,
 		report.ToolUsageStats, report.UpdatedAt, report.SourceRunID, report.ID)
 	if err != nil {
@@ -785,7 +767,7 @@ func (db *DB) WeeklyReportExists(repoID int64, year, week int) (bool, error) {
 	var count int
 	err := db.QueryRow(`
 		SELECT COUNT(*) FROM weekly_reports
-		WHERE repo_id = ? AND year = ? AND week = ?
+		WHERE repo_id = $1 AND year = $2 AND week = $3
 	`, repoID, year, week).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("failed to check weekly report existence: %w", err)
@@ -795,7 +777,7 @@ func (db *DB) WeeklyReportExists(repoID int64, year, week int) (bool, error) {
 
 // DeleteWeeklyReport deletes a weekly report by ID
 func (db *DB) DeleteWeeklyReport(id int64) error {
-	_, err := db.Exec("DELETE FROM weekly_reports WHERE id = ?", id)
+	_, err := db.Exec("DELETE FROM weekly_reports WHERE id = $1", id)
 	if err != nil {
 		return fmt.Errorf("failed to delete weekly report: %w", err)
 	}
@@ -811,17 +793,14 @@ func (db *DB) CreateAdmin(email, createdBy string) (*Admin, error) {
 		createdByVal = createdBy
 	}
 
-	result, err := db.Exec(`
+	var id int64
+	err := db.QueryRow(`
 		INSERT INTO admins (email, created_by)
-		VALUES (?, ?)
-	`, email, createdByVal)
+		VALUES ($1, $2)
+		RETURNING id
+	`, email, createdByVal).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create admin: %w", err)
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get admin ID: %w", err)
 	}
 
 	return db.GetAdmin(id)
@@ -833,7 +812,7 @@ func (db *DB) GetAdmin(id int64) (*Admin, error) {
 	err := db.QueryRow(`
 		SELECT id, email, created_at, created_by
 		FROM admins
-		WHERE id = ?
+		WHERE id = $1
 	`, id).Scan(&admin.ID, &admin.Email, &admin.CreatedAt, &admin.CreatedBy)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -850,7 +829,7 @@ func (db *DB) GetAdminByEmail(email string) (*Admin, error) {
 	err := db.QueryRow(`
 		SELECT id, email, created_at, created_by
 		FROM admins
-		WHERE email = ?
+		WHERE email = $1
 	`, email).Scan(&admin.ID, &admin.Email, &admin.CreatedAt, &admin.CreatedBy)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -887,7 +866,7 @@ func (db *DB) ListAdmins() ([]*Admin, error) {
 
 // DeleteAdmin deletes an admin by ID
 func (db *DB) DeleteAdmin(id int64) error {
-	_, err := db.Exec("DELETE FROM admins WHERE id = ?", id)
+	_, err := db.Exec("DELETE FROM admins WHERE id = $1", id)
 	if err != nil {
 		return fmt.Errorf("failed to delete admin: %w", err)
 	}
@@ -898,7 +877,7 @@ func (db *DB) DeleteAdmin(id int64) error {
 func (db *DB) IsAdmin(email string) (bool, error) {
 	var count int
 	err := db.QueryRow(`
-		SELECT COUNT(*) FROM admins WHERE email = ?
+		SELECT COUNT(*) FROM admins WHERE email = $1
 	`, email).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("failed to check admin status: %w", err)

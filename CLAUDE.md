@@ -8,7 +8,7 @@ This tool analyzes git commit history using AI to generate human-readable activi
 
 Activity is a **pure web application** with admin functionality. Public routes (dashboard, repos, reports) are read-only. Admin operations (repository management, newsletters, analysis triggers, user management) require authentication via an auth proxy that provides user email in a configurable header.
 
-**Auth Model:** Auth proxy provides user email via configurable header (default: `oidc-email`). Admins are listed in SQLite `admins` table.
+**Auth Model:** Auth proxy provides user email via configurable header (default: `oidc-email`). Admins are listed in PostgreSQL `admins` table.
 
 **Dev Mode:** When `dev_mode: true` in config, auth is bypassed and `dev_user` email is used (default: `dev@localhost`), treated as admin.
 
@@ -24,7 +24,7 @@ Configuration management with YAML support. Defines `Config`, `LLMConfig`, `WebC
 
 ### `internal/db`
 
-SQLite database layer using [goose](https://github.com/pressly/goose) for migrations. Tables: `repositories`, `activity_runs`, `weekly_reports`, newsletter tables (`subscribers`, `subscriptions`, `newsletter_sends`), and `admins`. Includes CRUD operations for all models. Migrations are embedded via `internal/db/migrations/` using Go's embed.FS.
+PostgreSQL database layer using [goose](https://github.com/pressly/goose) for migrations and [lib/pq](https://github.com/lib/pq) driver. Tables: `repositories`, `activity_runs`, `weekly_reports`, newsletter tables (`subscribers`, `subscriptions`, `newsletter_sends`), and `admins`. Includes CRUD operations for all models. Migrations are embedded via `internal/db/migrations/` using Go's embed.FS.
 
 ### `internal/service`
 
@@ -58,6 +58,7 @@ Core analysis logic with cost tracking. Agent mode uses ADK tools (`GetCommitDif
 
 ```bash
 # Development mode (no auth required)
+export DATABASE_URL="postgres://user:pass@localhost:5432/activity?sslmode=disable"
 ./activity --data-dir ./data --port 8080
 
 # With config file
@@ -70,7 +71,12 @@ Core analysis logic with cost tracking. Agent mode uses ADK tools (`GetCommitDif
 ## Configuration
 
 ```yaml
-data_dir: /var/lib/activity
+data_dir: /var/lib/activity  # Directory for git repository clones
+database:
+  dsn: postgres://user:pass@localhost:5432/activity?sslmode=disable
+  max_open_conns: 25         # Connection pool max open (default: 25)
+  max_idle_conns: 5          # Connection pool max idle (default: 5)
+  conn_max_lifetime_seconds: 300  # Connection max lifetime (default: 300)
 web:
   auth_header: oidc-email    # Header containing user email
   seed_admin: admin@example.com  # First admin on empty DB
@@ -83,6 +89,8 @@ newsletter:
   enabled: true
   sendgrid_api_key_env: SENDGRID_API_KEY
 ```
+
+The database DSN can also be provided via the `DATABASE_URL` environment variable.
 
 ## Phase Architecture
 

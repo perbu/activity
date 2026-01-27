@@ -13,10 +13,19 @@ import (
 type Config struct {
 	DataDir    string           `yaml:"data_dir"`
 	Debug      bool             `yaml:"debug"` // Enable debug logging
+	Database   DatabaseConfig   `yaml:"database"`
 	LLM        LLMConfig        `yaml:"llm"`
 	Newsletter NewsletterConfig `yaml:"newsletter"`
 	GitHub     GitHubConfig     `yaml:"github"`
 	Web        WebConfig        `yaml:"web"`
+}
+
+// DatabaseConfig represents PostgreSQL database configuration
+type DatabaseConfig struct {
+	DSN                    string `yaml:"dsn"`                       // PostgreSQL connection string
+	MaxOpenConns           int    `yaml:"max_open_conns"`            // Maximum open connections (default: 25)
+	MaxIdleConns           int    `yaml:"max_idle_conns"`            // Maximum idle connections (default: 5)
+	ConnMaxLifetimeSeconds int    `yaml:"conn_max_lifetime_seconds"` // Connection max lifetime in seconds (default: 300)
 }
 
 // WebConfig represents web server and authentication configuration
@@ -71,7 +80,13 @@ type LLMConfig struct {
 // DefaultConfig returns the default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		DataDir: "", // Must be specified by user
+		DataDir: "", // Directory for git repository clones (must be specified)
+		Database: DatabaseConfig{
+			DSN:                    "",  // Must be specified by user
+			MaxOpenConns:           25,  // Reasonable default for most workloads
+			MaxIdleConns:           5,   // Keep some connections warm
+			ConnMaxLifetimeSeconds: 300, // 5 minutes
+		},
 		LLM: LLMConfig{
 			Provider:         "gemini",
 			Model:            "gemini-3.0-flash",
@@ -127,6 +142,14 @@ func (c *Config) GetDevUser() string {
 		return c.Web.DevUser
 	}
 	return "dev@localhost"
+}
+
+// GetDatabaseDSN returns the database DSN from config or environment
+func (c *Config) GetDatabaseDSN() string {
+	if c.Database.DSN != "" {
+		return c.Database.DSN
+	}
+	return os.Getenv("DATABASE_URL")
 }
 
 // Load loads configuration from the specified path, falling back to defaults
