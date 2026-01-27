@@ -17,6 +17,7 @@ type Commit struct {
 }
 
 // Clone clones a repository to the specified path
+// Deprecated: Use CloneMirror for bare repositories
 func Clone(url, path, branch string) error {
 	cmd := exec.Command("git", "clone", "--branch", branch, url, path)
 	var stderr bytes.Buffer
@@ -29,7 +30,22 @@ func Clone(url, path, branch string) error {
 	return nil
 }
 
+// CloneMirror clones a repository as a bare mirror
+// Mirror clones fetch all refs and are ideal for read-only analysis
+func CloneMirror(url, path string) error {
+	cmd := exec.Command("git", "clone", "--mirror", url, path)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git clone --mirror failed: %w: %s", err, stderr.String())
+	}
+
+	return nil
+}
+
 // Pull pulls the latest changes for a repository
+// Deprecated: Use Fetch for bare repositories
 func Pull(repoPath string) error {
 	cmd := exec.Command("git", "-C", repoPath, "pull")
 	var stderr bytes.Buffer
@@ -37,6 +53,20 @@ func Pull(repoPath string) error {
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("git pull failed: %w: %s", err, stderr.String())
+	}
+
+	return nil
+}
+
+// Fetch fetches updates for a bare/mirror repository
+func Fetch(repoPath string) error {
+	// For mirrors, fetch with explicit refspec to update all refs
+	cmd := exec.Command("git", "-C", repoPath, "fetch", "--prune", "origin", "+refs/*:refs/*")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git fetch failed: %w: %s", err, stderr.String())
 	}
 
 	return nil
@@ -51,6 +81,21 @@ func GetCurrentSHA(repoPath string) (string, error) {
 
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("git rev-parse failed: %w: %s", err, stderr.String())
+	}
+
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+// GetBranchSHA returns the SHA for a specific branch
+// This is needed for bare repos where HEAD points to the default branch
+func GetBranchSHA(repoPath, branch string) (string, error) {
+	cmd := exec.Command("git", "-C", repoPath, "rev-parse", "refs/heads/"+branch)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("git rev-parse refs/heads/%s failed: %w: %s", branch, err, stderr.String())
 	}
 
 	return strings.TrimSpace(stdout.String()), nil
@@ -454,8 +499,36 @@ func GetRemoteURL(repoPath string) (string, error) {
 	return strings.TrimSpace(stdout.String()), nil
 }
 
+// GetFileContent retrieves the content of a file from HEAD in a bare repository
+func GetFileContent(repoPath, filepath string) (string, error) {
+	cmd := exec.Command("git", "-C", repoPath, "show", "HEAD:"+filepath)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("git show HEAD:%s failed: %w: %s", filepath, err, stderr.String())
+	}
+
+	return stdout.String(), nil
+}
+
+// IsBareRepo checks if a repository is a bare repository
+func IsBareRepo(repoPath string) bool {
+	cmd := exec.Command("git", "-C", repoPath, "rev-parse", "--is-bare-repository")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+
+	return strings.TrimSpace(stdout.String()) == "true"
+}
+
 // CloneWithAuth clones a repository using an authenticated URL
 // The token is injected into the URL for authentication
+// Deprecated: Use CloneMirrorWithAuth for bare repositories
 func CloneWithAuth(url, path, branch, token string) error {
 	authURL, err := injectToken(url, token)
 	if err != nil {
@@ -479,8 +552,33 @@ func CloneWithAuth(url, path, branch, token string) error {
 	return nil
 }
 
+// CloneMirrorWithAuth clones a repository as a bare mirror using an authenticated URL
+func CloneMirrorWithAuth(url, path, token string) error {
+	authURL, err := injectToken(url, token)
+	if err != nil {
+		return fmt.Errorf("failed to create authenticated URL: %w", err)
+	}
+
+	cmd := exec.Command("git", "clone", "--mirror", authURL, path)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git clone --mirror failed: %w: %s", err, stderr.String())
+	}
+
+	// After cloning, set the remote URL to the original (non-authenticated) URL
+	// This prevents the token from being stored in .git/config
+	if err := SetRemoteURL(path, url); err != nil {
+		return fmt.Errorf("failed to reset remote URL: %w", err)
+	}
+
+	return nil
+}
+
 // PullWithAuth pulls a repository using an authenticated URL
 // The token is temporarily injected for the pull operation
+// Deprecated: Use FetchWithAuth for bare repositories
 func PullWithAuth(repoPath, url, token string) error {
 	authURL, err := injectToken(url, token)
 	if err != nil {
@@ -508,6 +606,34 @@ func PullWithAuth(repoPath, url, token string) error {
 	return nil
 }
 
+// FetchWithAuth fetches a bare/mirror repository using an authenticated URL
+func FetchWithAuth(repoPath, url, token string) error {
+	authURL, err := injectToken(url, token)
+	if err != nil {
+		return fmt.Errorf("failed to create authenticated URL: %w", err)
+	}
+
+	// Temporarily set the authenticated URL
+	if err := SetRemoteURL(repoPath, authURL); err != nil {
+		return fmt.Errorf("failed to set authenticated URL: %w", err)
+	}
+
+	// Fetch
+	fetchErr := Fetch(repoPath)
+
+	// Always restore the original URL, even if fetch failed
+	restoreErr := SetRemoteURL(repoPath, url)
+
+	if fetchErr != nil {
+		return fetchErr
+	}
+	if restoreErr != nil {
+		return fmt.Errorf("failed to restore remote URL: %w", restoreErr)
+	}
+
+	return nil
+}
+
 // injectToken inserts an access token into a GitHub URL
 // Input: https://github.com/owner/repo.git
 // Output: https://x-access-token:TOKEN@github.com/owner/repo.git
@@ -521,14 +647,15 @@ func injectToken(originalURL, token string) (string, error) {
 	return "https://x-access-token:" + token + "@" + strings.TrimPrefix(originalURL, "https://"), nil
 }
 
-// FetchAll fetches all remote branches
+// FetchAll fetches all remote branches for a bare/mirror repository
 func FetchAll(repoPath string) error {
-	cmd := exec.Command("git", "-C", repoPath, "fetch", "--all", "--prune")
+	// For mirrors, fetch with explicit refspec to update all refs
+	cmd := exec.Command("git", "-C", repoPath, "fetch", "--prune", "origin", "+refs/*:refs/*")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("git fetch --all failed: %w: %s", err, stderr.String())
+		return fmt.Errorf("git fetch failed: %w: %s", err, stderr.String())
 	}
 
 	return nil
@@ -570,31 +697,29 @@ type BranchActivity struct {
 	AuthorCounts map[string]int
 }
 
-// GetFeatureBranchActivity returns commits on remote branches that aren't on the main branch
-// within the specified week
+// GetFeatureBranchActivity returns commits on branches that aren't on the main branch
+// within the specified week. Works with bare/mirror repositories where branches
+// are local (no origin/ prefix).
 func GetFeatureBranchActivity(repoPath, mainBranch string, year, week int) ([]BranchActivity, error) {
 	// Get week bounds for date filtering
 	start, end := ISOWeekBounds(year, week)
 	sinceStr := start.Format("2006-01-02")
 	untilStr := end.AddDate(0, 0, 1).Format("2006-01-02") // Add 1 day for inclusive end
 
-	// List remote branches
-	cmd := exec.Command("git", "-C", repoPath, "branch", "-r", "--format=%(refname:short)")
+	// List local branches (in a mirror, all branches are local)
+	cmd := exec.Command("git", "-C", repoPath, "branch", "--format=%(refname:short)")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("git branch -r failed: %w: %s", err, stderr.String())
+		return nil, fmt.Errorf("git branch failed: %w: %s", err, stderr.String())
 	}
 
 	branches := strings.Split(strings.TrimSpace(stdout.String()), "\n")
 	if len(branches) == 0 || (len(branches) == 1 && branches[0] == "") {
 		return nil, nil
 	}
-
-	// Build the main branch ref (e.g., "origin/main")
-	mainRef := "origin/" + mainBranch
 
 	var activities []BranchActivity
 
@@ -605,14 +730,14 @@ func GetFeatureBranchActivity(repoPath, mainBranch string, year, week int) ([]Br
 		}
 
 		// Skip the main branch and HEAD pointer
-		if branch == mainRef || strings.HasSuffix(branch, "/HEAD") || strings.Contains(branch, "->") {
+		if branch == mainBranch || strings.HasSuffix(branch, "/HEAD") || strings.Contains(branch, "->") {
 			continue
 		}
 
 		// Get commits on this branch that aren't on main, within the date range
 		// Format: author name only
 		logCmd := exec.Command("git", "-C", repoPath, "log",
-			branch, "--not", mainRef,
+			branch, "--not", mainBranch,
 			"--since="+sinceStr, "--until="+untilStr,
 			"--format=%an")
 		var logOut, logErr bytes.Buffer
@@ -649,11 +774,8 @@ func GetFeatureBranchActivity(repoPath, mainBranch string, year, week int) ([]Br
 			authors = append(authors, author)
 		}
 
-		// Strip "origin/" prefix from branch name for cleaner display
-		displayName := strings.TrimPrefix(branch, "origin/")
-
 		activities = append(activities, BranchActivity{
-			BranchName:   displayName,
+			BranchName:   branch,
 			CommitCount:  len(lines),
 			Authors:      authors,
 			AuthorCounts: authorCounts,

@@ -23,8 +23,9 @@ type Repository struct {
 
 // RepoLocalPath computes the local filesystem path for a repository.
 // The path is derived from the data directory and repository name.
+// Uses .git suffix for bare/mirror repositories.
 func RepoLocalPath(dataDir, repoName string) string {
-	return filepath.Join(dataDir, repoName)
+	return filepath.Join(dataDir, repoName+".git")
 }
 
 // ActivityRun represents a single analysis run on a repository

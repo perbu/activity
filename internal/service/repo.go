@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -36,6 +35,46 @@ func NewRepoService(database *db.DB, cfg *config.Config, tokenProvider *github.T
 // repoPath computes the local filesystem path for a repository
 func (s *RepoService) repoPath(repoName string) string {
 	return db.RepoLocalPath(s.cfg.DataDir, repoName)
+}
+
+// ensureRepoReady ensures the repository is cloned and in bare format
+// This handles auto-migration from old full checkout format
+func (s *RepoService) ensureRepoReady(repo *db.Repository) error {
+	repoPath := s.repoPath(repo.Name)
+
+	// Check if repo exists
+	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+		slog.Info("Repository missing, re-cloning", "name", repo.Name)
+		return s.cloneRepo(repo)
+	}
+
+	// Check if it's a bare repo
+	if !git.IsBareRepo(repoPath) {
+		slog.Info("Migrating to bare repo", "name", repo.Name)
+		if err := os.RemoveAll(repoPath); err != nil {
+			return fmt.Errorf("failed to remove old repo: %w", err)
+		}
+		return s.cloneRepo(repo)
+	}
+
+	return nil
+}
+
+// cloneRepo clones a repository as a bare mirror
+func (s *RepoService) cloneRepo(repo *db.Repository) error {
+	repoPath := s.repoPath(repo.Name)
+
+	if repo.Private {
+		if s.tokenProvider == nil {
+			return fmt.Errorf("repository '%s' is private but no GitHub App is configured", repo.Name)
+		}
+		token, err := s.tokenProvider.GetToken()
+		if err != nil {
+			return fmt.Errorf("failed to get GitHub token: %w", err)
+		}
+		return git.CloneMirrorWithAuth(repo.URL, repoPath, token)
+	}
+	return git.CloneMirror(repo.URL, repoPath)
 }
 
 // AddOptions contains options for adding a repository
@@ -72,19 +111,19 @@ func (s *RepoService) Add(ctx context.Context, opts AddOptions) (*db.Repository,
 		return nil, fmt.Errorf("directory already exists: %s", localPath)
 	}
 
-	slog.Info("Cloning repository", "url", opts.URL, "path", localPath, "private", opts.Private)
+	slog.Info("Cloning repository as bare mirror", "url", opts.URL, "path", localPath, "private", opts.Private)
 
-	// Clone repository (with auth if private)
+	// Clone repository as bare mirror (with auth if private)
 	if opts.Private {
 		token, err := s.tokenProvider.GetToken()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get GitHub token: %w", err)
 		}
-		if err := git.CloneWithAuth(opts.URL, localPath, opts.Branch, token); err != nil {
+		if err := git.CloneMirrorWithAuth(opts.URL, localPath, token); err != nil {
 			return nil, fmt.Errorf("failed to clone repository: %w", err)
 		}
 	} else {
-		if err := git.Clone(opts.URL, localPath, opts.Branch); err != nil {
+		if err := git.CloneMirror(opts.URL, localPath); err != nil {
 			return nil, fmt.Errorf("failed to clone repository: %w", err)
 		}
 	}
@@ -208,7 +247,7 @@ type UpdateResult struct {
 	AlreadyUpToDate bool
 }
 
-// Update pulls the latest changes from a repository
+// Update fetches the latest changes for a repository
 func (s *RepoService) Update(ctx context.Context, name string) (*UpdateResult, error) {
 	repo, err := s.db.GetRepositoryByName(name)
 	if err != nil {
@@ -216,15 +255,21 @@ func (s *RepoService) Update(ctx context.Context, name string) (*UpdateResult, e
 	}
 
 	repoPath := s.repoPath(repo.Name)
+
+	// Ensure repo is ready (handles migration from old format)
+	if err := s.ensureRepoReady(repo); err != nil {
+		return nil, fmt.Errorf("failed to ensure repo ready: %w", err)
+	}
+
 	slog.Info("Updating repository", "name", name)
 
-	// Get current SHA before pull
-	beforeSHA, err := git.GetCurrentSHA(repoPath)
+	// Get current SHA for the tracked branch before fetch
+	beforeSHA, err := git.GetBranchSHA(repoPath, repo.Branch)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current SHA: %w", err)
 	}
 
-	// Fetch all branches and pull updates (with auth if private)
+	// Fetch updates (with auth if private)
 	if repo.Private {
 		if s.tokenProvider == nil {
 			return nil, fmt.Errorf("repository '%s' is private but no GitHub App is configured", name)
@@ -233,23 +278,17 @@ func (s *RepoService) Update(ctx context.Context, name string) (*UpdateResult, e
 		if err != nil {
 			return nil, fmt.Errorf("failed to get GitHub token: %w", err)
 		}
-		if err := git.FetchAllWithAuth(repoPath, repo.URL, token); err != nil {
-			slog.Warn("Failed to fetch all branches", "error", err)
-		}
-		if err := git.PullWithAuth(repoPath, repo.URL, token); err != nil {
-			return nil, fmt.Errorf("failed to pull: %w", err)
+		if err := git.FetchWithAuth(repoPath, repo.URL, token); err != nil {
+			return nil, fmt.Errorf("failed to fetch: %w", err)
 		}
 	} else {
-		if err := git.FetchAll(repoPath); err != nil {
-			slog.Warn("Failed to fetch all branches", "error", err)
-		}
-		if err := git.Pull(repoPath); err != nil {
-			return nil, fmt.Errorf("failed to pull: %w", err)
+		if err := git.Fetch(repoPath); err != nil {
+			return nil, fmt.Errorf("failed to fetch: %w", err)
 		}
 	}
 
-	// Get SHA after pull
-	afterSHA, err := git.GetCurrentSHA(repoPath)
+	// Get SHA after fetch for the tracked branch
+	afterSHA, err := git.GetBranchSHA(repoPath, repo.Branch)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get updated SHA: %w", err)
 	}
@@ -348,6 +387,7 @@ func (s *RepoService) generateDescription(ctx context.Context, repoPath string) 
 }
 
 // findAndReadREADME looks for README files in the repository and returns the content
+// Works with bare repositories by using git show to retrieve file content
 func findAndReadREADME(repoPath string) (string, error) {
 	readmeNames := []string{
 		"README.md",
@@ -360,10 +400,9 @@ func findAndReadREADME(repoPath string) (string, error) {
 	}
 
 	for _, name := range readmeNames {
-		path := filepath.Join(repoPath, name)
-		content, err := os.ReadFile(path)
+		content, err := git.GetFileContent(repoPath, name)
 		if err == nil {
-			return string(content), nil
+			return content, nil
 		}
 	}
 
