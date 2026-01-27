@@ -223,12 +223,15 @@ The agent mode includes multiple safeguards:
 
 ## Database
 
-All data stored in SQLite database at `<data_dir>/activity.db`:
+All data stored in SQLite database at `<data_dir>/activity.db`. Migrations are managed by [goose](https://github.com/pressly/goose) and run automatically on startup.
 
+Tables:
 - `repositories`: Tracked repos with metadata
 - `activity_runs`: Analysis results with summaries and cost tracking
 - `weekly_reports`: Week-indexed summaries keyed by (repo, year, week)
 - `subscribers`, `subscriptions`, `newsletter_sends`: Newsletter feature tables
+- `admins`: Admin users for web authentication
+- `goose_db_version`: Migration version tracking (managed by goose)
 
 Query examples:
 ```sql
@@ -239,6 +242,10 @@ sqlite3 ~/.local/share/activity/activity.db \
 # View weekly reports
 sqlite3 ~/.local/share/activity/activity.db \
   "SELECT year, week, commit_count, created_at FROM weekly_reports ORDER BY year DESC, week DESC;"
+
+# Check migration version
+sqlite3 ~/.local/share/activity/activity.db \
+  "SELECT version_id FROM goose_db_version ORDER BY id DESC LIMIT 1;"
 ```
 
 ## Development
@@ -254,6 +261,7 @@ internal/
   cli/                - Command structs and Run methods (kong-based)
   config/             - Configuration management
   db/                 - Database layer
+    migrations/       - Goose SQL migrations (embedded)
   email/              - Email client for newsletters
   git/                - Git operations
   llm/                - LLM client abstraction

@@ -52,7 +52,7 @@ func TestOpen(t *testing.T) {
 	}
 
 	// Verify migrations ran by checking tables exist
-	tables := []string{"migrations", "repositories", "activity_runs", "subscribers", "subscriptions", "newsletter_sends", "weekly_reports"}
+	tables := []string{"goose_db_version", "repositories", "activity_runs", "subscribers", "subscriptions", "newsletter_sends", "weekly_reports", "admins"}
 	for _, table := range tables {
 		var name string
 		err := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&name)
@@ -1332,5 +1332,170 @@ func TestMigrations_Idempotent(t *testing.T) {
 	_, err = db2.CreateRepository("test", "https://example.com", "main", false, sql.NullString{})
 	if err != nil {
 		t.Fatalf("CreateRepository() after reopen error = %v", err)
+	}
+}
+
+func TestMigrations_LegacyUpgrade(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "activity-db-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	dbPath := filepath.Join(tmpDir, "activity.db")
+
+	// Create a database with the old migration system at version 8
+	sqlDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("failed to open database: %v", err)
+	}
+
+	// Create old migrations table
+	_, err = sqlDB.Exec(`
+		CREATE TABLE migrations (
+			version INTEGER PRIMARY KEY,
+			applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		t.Fatalf("failed to create migrations table: %v", err)
+	}
+
+	// Insert version 8
+	_, err = sqlDB.Exec("INSERT INTO migrations (version) VALUES (8)")
+	if err != nil {
+		t.Fatalf("failed to insert migration version: %v", err)
+	}
+
+	// Create all the tables that would exist at version 8
+	_, err = sqlDB.Exec(`
+		CREATE TABLE repositories (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT UNIQUE NOT NULL,
+			url TEXT NOT NULL,
+			branch TEXT NOT NULL DEFAULT 'main',
+			active BOOLEAN NOT NULL DEFAULT 1,
+			private BOOLEAN NOT NULL DEFAULT 0,
+			description TEXT,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			last_run_at DATETIME,
+			last_run_sha TEXT
+		);
+
+		CREATE TABLE activity_runs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			repo_id INTEGER NOT NULL,
+			start_sha TEXT NOT NULL,
+			end_sha TEXT NOT NULL,
+			started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			completed_at DATETIME,
+			summary TEXT,
+			raw_data TEXT,
+			agent_mode BOOLEAN DEFAULT 0,
+			tool_usage_stats TEXT,
+			FOREIGN KEY (repo_id) REFERENCES repositories(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE subscribers (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			email TEXT UNIQUE NOT NULL,
+			subscribe_all BOOLEAN NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+
+		CREATE TABLE subscriptions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			subscriber_id INTEGER NOT NULL,
+			repo_id INTEGER NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (subscriber_id) REFERENCES subscribers(id) ON DELETE CASCADE,
+			FOREIGN KEY (repo_id) REFERENCES repositories(id) ON DELETE CASCADE,
+			UNIQUE(subscriber_id, repo_id)
+		);
+
+		CREATE TABLE newsletter_sends (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			subscriber_id INTEGER NOT NULL,
+			activity_run_id INTEGER NOT NULL,
+			sent_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			sendgrid_message_id TEXT,
+			FOREIGN KEY (subscriber_id) REFERENCES subscribers(id) ON DELETE CASCADE,
+			FOREIGN KEY (activity_run_id) REFERENCES activity_runs(id) ON DELETE CASCADE,
+			UNIQUE(subscriber_id, activity_run_id)
+		);
+
+		CREATE TABLE weekly_reports (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			repo_id INTEGER NOT NULL,
+			year INTEGER NOT NULL,
+			week INTEGER NOT NULL,
+			week_start DATE NOT NULL,
+			week_end DATE NOT NULL,
+			summary TEXT,
+			commit_count INTEGER NOT NULL DEFAULT 0,
+			metadata TEXT,
+			agent_mode BOOLEAN DEFAULT 0,
+			tool_usage_stats TEXT,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			source_run_id INTEGER,
+			FOREIGN KEY (repo_id) REFERENCES repositories(id) ON DELETE CASCADE,
+			FOREIGN KEY (source_run_id) REFERENCES activity_runs(id) ON DELETE SET NULL,
+			UNIQUE(repo_id, year, week)
+		);
+
+		CREATE TABLE admins (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			email TEXT UNIQUE NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			created_by TEXT
+		);
+	`)
+	if err != nil {
+		t.Fatalf("failed to create tables: %v", err)
+	}
+
+	// Insert some test data
+	_, err = sqlDB.Exec(`INSERT INTO repositories (name, url, branch) VALUES ('test-repo', 'https://example.com', 'main')`)
+	if err != nil {
+		t.Fatalf("failed to insert test data: %v", err)
+	}
+
+	sqlDB.Close()
+
+	// Now open with our new migration system
+	db, err := Open(tmpDir)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer db.Close()
+
+	// Verify old migrations table is gone
+	var tableName string
+	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='migrations'").Scan(&tableName)
+	if err != sql.ErrNoRows {
+		t.Error("old migrations table should have been dropped")
+	}
+
+	// Verify goose_db_version table exists
+	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='goose_db_version'").Scan(&tableName)
+	if err != nil {
+		t.Errorf("goose_db_version table should exist: %v", err)
+	}
+
+	// Verify data was preserved
+	repo, err := db.GetRepositoryByName("test-repo")
+	if err != nil {
+		t.Fatalf("GetRepositoryByName() error = %v", err)
+	}
+	if repo.Name != "test-repo" {
+		t.Errorf("Name = %q, want %q", repo.Name, "test-repo")
+	}
+
+	// Verify we can still use the database
+	_, err = db.CreateRepository("new-repo", "https://example.com/new", "main", false, sql.NullString{})
+	if err != nil {
+		t.Fatalf("CreateRepository() after upgrade error = %v", err)
 	}
 }

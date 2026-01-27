@@ -16,9 +16,10 @@ variables. `WebConfig` handles auth proxy settings (`auth_header`, `seed_admin`,
 
 ## db
 
-SQLite database layer using modernc.org/sqlite (pure Go). Manages schema migrations (version 7) and provides CRUD
-operations for all models: repositories, activity_runs, weekly_reports, newsletter tables (subscribers, subscriptions,
-newsletter_sends), and admins. The migration system tracks schema versions in a `migrations` table.
+SQLite database layer using modernc.org/sqlite (pure Go). Migrations are managed by goose with SQL files embedded via
+`internal/db/migrations/`. Provides CRUD operations for all models: repositories, activity_runs, weekly_reports,
+newsletter tables (subscribers, subscriptions, newsletter_sends), and admins. Automatically handles upgrades from the
+legacy custom migration system.
 
 ## email
 

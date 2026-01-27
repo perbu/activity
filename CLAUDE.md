@@ -24,7 +24,7 @@ Configuration management with YAML support. Defines `Config`, `LLMConfig`, `WebC
 
 ### `internal/db`
 
-SQLite database layer with migrations (version 7). Tables: `repositories`, `activity_runs`, `weekly_reports`, newsletter tables (`subscribers`, `subscriptions`, `newsletter_sends`), and `admins`. Includes CRUD operations for all models.
+SQLite database layer using [goose](https://github.com/pressly/goose) for migrations. Tables: `repositories`, `activity_runs`, `weekly_reports`, newsletter tables (`subscribers`, `subscriptions`, `newsletter_sends`), and `admins`. Includes CRUD operations for all models. Migrations are embedded via `internal/db/migrations/` using Go's embed.FS.
 
 ### `internal/service`
 
