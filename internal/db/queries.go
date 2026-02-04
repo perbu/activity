@@ -9,13 +9,13 @@ import (
 // Repository CRUD operations
 
 // CreateRepository inserts a new repository into the database
-func (db *DB) CreateRepository(name, url, branch string, private bool, description sql.NullString) (*Repository, error) {
+func (db *DB) CreateRepository(name, url, branch string, private, external bool, description, forgeType, forgeOwner, forgeRepo sql.NullString) (*Repository, error) {
 	var id int64
 	err := db.QueryRow(`
-		INSERT INTO repositories (name, url, branch, active, private, description)
-		VALUES ($1, $2, $3, true, $4, $5)
+		INSERT INTO repositories (name, url, branch, active, private, external, description, forge_type, forge_owner, forge_repo)
+		VALUES ($1, $2, $3, true, $4, $5, $6, $7, $8, $9)
 		RETURNING id
-	`, name, url, branch, private, description).Scan(&id)
+	`, name, url, branch, private, external, description, forgeType, forgeOwner, forgeRepo).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repository: %w", err)
 	}
@@ -27,12 +27,15 @@ func (db *DB) CreateRepository(name, url, branch string, private bool, descripti
 func (db *DB) GetRepository(id int64) (*Repository, error) {
 	repo := &Repository{}
 	err := db.QueryRow(`
-		SELECT id, name, url, branch, active, COALESCE(private, false), description, created_at, updated_at, last_run_at, last_run_sha
+		SELECT id, name, url, branch, active, COALESCE(private, false), COALESCE(external, false), description,
+		       forge_type, forge_owner, forge_repo, created_at, updated_at, last_run_at, last_run_sha
 		FROM repositories
 		WHERE id = $1
 	`, id).Scan(
 		&repo.ID, &repo.Name, &repo.URL, &repo.Branch,
-		&repo.Active, &repo.Private, &repo.Description, &repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
+		&repo.Active, &repo.Private, &repo.External, &repo.Description,
+		&repo.ForgeType, &repo.ForgeOwner, &repo.ForgeRepo,
+		&repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -47,12 +50,15 @@ func (db *DB) GetRepository(id int64) (*Repository, error) {
 func (db *DB) GetRepositoryByName(name string) (*Repository, error) {
 	repo := &Repository{}
 	err := db.QueryRow(`
-		SELECT id, name, url, branch, active, COALESCE(private, false), description, created_at, updated_at, last_run_at, last_run_sha
+		SELECT id, name, url, branch, active, COALESCE(private, false), COALESCE(external, false), description,
+		       forge_type, forge_owner, forge_repo, created_at, updated_at, last_run_at, last_run_sha
 		FROM repositories
 		WHERE name = $1
 	`, name).Scan(
 		&repo.ID, &repo.Name, &repo.URL, &repo.Branch,
-		&repo.Active, &repo.Private, &repo.Description, &repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
+		&repo.Active, &repo.Private, &repo.External, &repo.Description,
+		&repo.ForgeType, &repo.ForgeOwner, &repo.ForgeRepo,
+		&repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -66,10 +72,11 @@ func (db *DB) GetRepositoryByName(name string) (*Repository, error) {
 // ListRepositories retrieves all repositories, optionally filtered by active status
 func (db *DB) ListRepositories(activeOnly *bool) ([]*Repository, error) {
 	query := `
-		SELECT id, name, url, branch, active, COALESCE(private, false), description, created_at, updated_at, last_run_at, last_run_sha
+		SELECT id, name, url, branch, active, COALESCE(private, false), COALESCE(external, false), description,
+		       forge_type, forge_owner, forge_repo, created_at, updated_at, last_run_at, last_run_sha
 		FROM repositories
 	`
-	var args []interface{}
+	var args []any
 
 	if activeOnly != nil {
 		query += " WHERE active = $1"
@@ -89,7 +96,9 @@ func (db *DB) ListRepositories(activeOnly *bool) ([]*Repository, error) {
 		repo := &Repository{}
 		err := rows.Scan(
 			&repo.ID, &repo.Name, &repo.URL, &repo.Branch,
-			&repo.Active, &repo.Private, &repo.Description, &repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
+			&repo.Active, &repo.Private, &repo.External, &repo.Description,
+			&repo.ForgeType, &repo.ForgeOwner, &repo.ForgeRepo,
+			&repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan repository: %w", err)
@@ -105,9 +114,11 @@ func (db *DB) UpdateRepository(repo *Repository) error {
 	repo.UpdatedAt = time.Now()
 	_, err := db.Exec(`
 		UPDATE repositories
-		SET name = $1, url = $2, branch = $3, active = $4, private = $5, description = $6, updated_at = $7, last_run_at = $8, last_run_sha = $9
-		WHERE id = $10
-	`, repo.Name, repo.URL, repo.Branch, repo.Active, repo.Private, repo.Description, repo.UpdatedAt, repo.LastRunAt, repo.LastRunSHA, repo.ID)
+		SET name = $1, url = $2, branch = $3, active = $4, private = $5, external = $6, description = $7,
+		    forge_type = $8, forge_owner = $9, forge_repo = $10, updated_at = $11, last_run_at = $12, last_run_sha = $13
+		WHERE id = $14
+	`, repo.Name, repo.URL, repo.Branch, repo.Active, repo.Private, repo.External, repo.Description,
+		repo.ForgeType, repo.ForgeOwner, repo.ForgeRepo, repo.UpdatedAt, repo.LastRunAt, repo.LastRunSHA, repo.ID)
 	if err != nil {
 		return fmt.Errorf("failed to update repository: %w", err)
 	}
@@ -536,7 +547,8 @@ func (db *DB) GetReposForSubscriber(subscriberID int64) ([]*Repository, error) {
 
 	// Return only subscribed repos
 	rows, err := db.Query(`
-		SELECT r.id, r.name, r.url, r.branch, r.active, COALESCE(r.private, false), r.description, r.created_at, r.updated_at, r.last_run_at, r.last_run_sha
+		SELECT r.id, r.name, r.url, r.branch, r.active, COALESCE(r.private, false), COALESCE(r.external, false), r.description,
+		       r.forge_type, r.forge_owner, r.forge_repo, r.created_at, r.updated_at, r.last_run_at, r.last_run_sha
 		FROM repositories r
 		INNER JOIN subscriptions s ON r.id = s.repo_id
 		WHERE s.subscriber_id = $1
@@ -552,7 +564,9 @@ func (db *DB) GetReposForSubscriber(subscriberID int64) ([]*Repository, error) {
 		repo := &Repository{}
 		if err := rows.Scan(
 			&repo.ID, &repo.Name, &repo.URL, &repo.Branch,
-			&repo.Active, &repo.Private, &repo.Description, &repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
+			&repo.Active, &repo.Private, &repo.External, &repo.Description,
+			&repo.ForgeType, &repo.ForgeOwner, &repo.ForgeRepo,
+			&repo.CreatedAt, &repo.UpdatedAt, &repo.LastRunAt, &repo.LastRunSHA,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan repository: %w", err)
 		}
@@ -893,4 +907,68 @@ func (db *DB) AdminCount() (int, error) {
 		return 0, fmt.Errorf("failed to count admins: %w", err)
 	}
 	return count, nil
+}
+
+// AnalysisLog CRUD operations
+
+// CreateAnalysisLog inserts a new analysis log entry into the database
+func (db *DB) CreateAnalysisLog(activityRunID int64, logType, toolName, content string, sequence int) (*AnalysisLog, error) {
+	var toolNameVal interface{}
+	if toolName != "" {
+		toolNameVal = toolName
+	}
+
+	var id int64
+	err := db.QueryRow(`
+		INSERT INTO analysis_logs (activity_run_id, log_type, tool_name, content, sequence)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id
+	`, activityRunID, logType, toolNameVal, content, sequence).Scan(&id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create analysis log: %w", err)
+	}
+
+	return db.GetAnalysisLog(id)
+}
+
+// GetAnalysisLog retrieves an analysis log by ID
+func (db *DB) GetAnalysisLog(id int64) (*AnalysisLog, error) {
+	log := &AnalysisLog{}
+	err := db.QueryRow(`
+		SELECT id, activity_run_id, log_type, tool_name, content, sequence, created_at
+		FROM analysis_logs
+		WHERE id = $1
+	`, id).Scan(&log.ID, &log.ActivityRunID, &log.LogType, &log.ToolName, &log.Content, &log.Sequence, &log.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("analysis log not found")
+		}
+		return nil, fmt.Errorf("failed to get analysis log: %w", err)
+	}
+	return log, nil
+}
+
+// GetAnalysisLogsByActivityRun retrieves all analysis logs for a specific activity run
+func (db *DB) GetAnalysisLogsByActivityRun(activityRunID int64) ([]*AnalysisLog, error) {
+	rows, err := db.Query(`
+		SELECT id, activity_run_id, log_type, tool_name, content, sequence, created_at
+		FROM analysis_logs
+		WHERE activity_run_id = $1
+		ORDER BY sequence
+	`, activityRunID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list analysis logs: %w", err)
+	}
+	defer rows.Close()
+
+	var logs []*AnalysisLog
+	for rows.Next() {
+		log := &AnalysisLog{}
+		if err := rows.Scan(&log.ID, &log.ActivityRunID, &log.LogType, &log.ToolName, &log.Content, &log.Sequence, &log.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan analysis log: %w", err)
+		}
+		logs = append(logs, log)
+	}
+
+	return logs, nil
 }

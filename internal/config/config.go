@@ -18,6 +18,33 @@ type Config struct {
 	Newsletter NewsletterConfig `yaml:"newsletter"`
 	GitHub     GitHubConfig     `yaml:"github"`
 	Web        WebConfig        `yaml:"web"`
+	Forgejo    []ForgejoConfig  `yaml:"forgejo"` // Forgejo/Gitea instances
+}
+
+// ForgejoConfig represents configuration for a Forgejo/Gitea instance
+type ForgejoConfig struct {
+	Name     string `yaml:"name"`      // Instance identifier (e.g., "codeberg", "internal")
+	BaseURL  string `yaml:"base_url"`  // Base URL (e.g., "https://codeberg.org")
+	TokenEnv string `yaml:"token_env"` // Env var name for personal access token (optional)
+}
+
+// GetForgejoConfig returns the ForgejoConfig for the given instance name, or nil if not found
+func (c *Config) GetForgejoConfig(name string) *ForgejoConfig {
+	for i := range c.Forgejo {
+		if c.Forgejo[i].Name == name {
+			return &c.Forgejo[i]
+		}
+	}
+	return nil
+}
+
+// GetForgejoToken returns the token for the given Forgejo instance from its configured env var
+func (c *Config) GetForgejoToken(name string) string {
+	cfg := c.GetForgejoConfig(name)
+	if cfg == nil || cfg.TokenEnv == "" {
+		return ""
+	}
+	return os.Getenv(cfg.TokenEnv)
 }
 
 // DatabaseConfig represents PostgreSQL database configuration
@@ -39,11 +66,11 @@ type WebConfig struct {
 // GitHubConfig represents GitHub App authentication configuration
 type GitHubConfig struct {
 	AppID             int64  `yaml:"app_id"`
-	AppIDEnv          string `yaml:"app_id_env"`           // Env var with App ID
+	AppIDEnv          string `yaml:"app_id_env"` // Env var with App ID
 	InstallationID    int64  `yaml:"installation_id"`
-	InstallationIDEnv string `yaml:"installation_id_env"`  // Env var with Installation ID
-	PrivateKeyPath    string `yaml:"private_key_path"`     // Path to PEM file
-	PrivateKeyEnv     string `yaml:"private_key_env"`      // Env var with PEM content
+	InstallationIDEnv string `yaml:"installation_id_env"` // Env var with Installation ID
+	PrivateKeyPath    string `yaml:"private_key_path"`    // Path to PEM file
+	PrivateKeyEnv     string `yaml:"private_key_env"`     // Env var with PEM content
 }
 
 // NewsletterConfig represents newsletter email configuration
@@ -234,6 +261,22 @@ func (c *Config) GetAgentSystemPrompt() string {
 	return DefaultAgentSystemPrompt
 }
 
+// GetAgentSystemPromptForRepo returns the appropriate agent system prompt based on repo type
+// For internal repos, returns a prompt without contributor analysis instructions
+// hasForge indicates whether forge (PR/review) integration is available
+func (c *Config) GetAgentSystemPromptForRepo(external, hasForge bool) string {
+	if external {
+		if hasForge {
+			return c.GetAgentSystemPrompt() // External repos already have contributor analysis
+		}
+		return c.GetAgentSystemPrompt()
+	}
+	if hasForge {
+		return DefaultAgentSystemPromptInternalWithForge
+	}
+	return DefaultAgentSystemPromptInternal
+}
+
 // DefaultPhase2Prompt is the default prompt template for Phase 2 analysis
 const DefaultPhase2Prompt = `Please provide a concise summary of the development activity in this commit range.
 Focus on:
@@ -343,6 +386,72 @@ Provide a summary with these sections:
 3. Refactoring/Improvements: Code quality changes
 4. Notable Patterns: Trends across commits (if any)
 5. Contributors: Brief info about active authors (use get_author_stats for context)
+
+Keep the summary under 400 words and use clear, professional language.
+If you had to skip analyzing some commits due to limits, mention this briefly at the end.`
+
+// DefaultAgentSystemPromptInternal is the system prompt for internal repositories (no contributor analysis)
+const DefaultAgentSystemPromptInternal = `You are a Git commit analyzer that summarizes development activity.
+
+Your goal is to produce a concise summary of what happened in this commit range.
+
+IMPORTANT GUIDELINES:
+1. First, review all commit messages provided in the user prompt
+2. If a commit message is CLEAR and DESCRIPTIVE (e.g., "Fix null pointer in user auth",
+   "Add pagination to API endpoint"), you can summarize it WITHOUT viewing the diff
+3. ONLY use get_commit_diff when:
+   - The commit message is vague (e.g., "fix", "update", "changes", "stuff")
+   - The message doesn't explain WHAT was changed
+   - You need to verify the scope of a change
+   - The message references a ticket/issue without explanation (e.g., "Fix #123")
+4. You have LIMITED diff fetches (max %d per analysis) - use them wisely
+5. Before fetching a diff, consider using get_full_commit_message if the message was truncated
+6. Prioritize diffs for:
+   - Unclear messages that seem important
+   - Commits that likely have significant impact
+   - Bug fixes without clear descriptions
+
+OUTPUT FORMAT:
+Provide a summary with these sections:
+1. Main Features or Changes: New capabilities added
+2. Bug Fixes: Issues resolved
+3. Refactoring/Improvements: Code quality changes
+4. Notable Patterns: Trends across commits (if any)
+
+Keep the summary under 400 words and use clear, professional language.
+If you had to skip analyzing some commits due to limits, mention this briefly at the end.`
+
+// DefaultAgentSystemPromptInternalWithForge is for internal repos with forge integration (includes PR review section)
+const DefaultAgentSystemPromptInternalWithForge = `You are a Git commit analyzer that summarizes development activity.
+
+Your goal is to produce a concise summary of what happened in this commit range.
+
+IMPORTANT GUIDELINES:
+1. First, review all commit messages provided in the user prompt
+2. If a commit message is CLEAR and DESCRIPTIVE (e.g., "Fix null pointer in user auth",
+   "Add pagination to API endpoint"), you can summarize it WITHOUT viewing the diff
+3. ONLY use get_commit_diff when:
+   - The commit message is vague (e.g., "fix", "update", "changes", "stuff")
+   - The message doesn't explain WHAT was changed
+   - You need to verify the scope of a change
+   - The message references a ticket/issue without explanation (e.g., "Fix #123")
+4. You have LIMITED diff fetches (max %d per analysis) - use them wisely
+5. Before fetching a diff, consider using get_full_commit_message if the message was truncated
+6. Prioritize diffs for:
+   - Unclear messages that seem important
+   - Commits that likely have significant impact
+   - Bug fixes without clear descriptions
+7. Use get_pr_reviews to understand code review activity - who reviewed PRs,
+   approval patterns, and review comments. This helps identify active reviewers
+   and collaboration patterns.
+
+OUTPUT FORMAT:
+Provide a summary with these sections:
+1. Main Features or Changes: New capabilities added
+2. Bug Fixes: Issues resolved
+3. Refactoring/Improvements: Code quality changes
+4. Notable Patterns: Trends across commits (if any)
+5. Code Reviews: Summary of review activity, active reviewers, approval patterns
 
 Keep the summary under 400 words and use clear, professional language.
 If you had to skip analyzing some commits due to limits, mention this briefly at the end.`

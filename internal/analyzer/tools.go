@@ -24,13 +24,15 @@ func shortSHA(sha string) string {
 type GetCommitDiffTool struct {
 	repoPath    string
 	costTracker *CostTracker
+	logger      *AnalysisLogger
 }
 
 // NewGetCommitDiffTool creates a new GetCommitDiffTool
-func NewGetCommitDiffTool(repoPath string, costTracker *CostTracker) *GetCommitDiffTool {
+func NewGetCommitDiffTool(repoPath string, costTracker *CostTracker, logger *AnalysisLogger) *GetCommitDiffTool {
 	return &GetCommitDiffTool{
 		repoPath:    repoPath,
 		costTracker: costTracker,
+		logger:      logger,
 	}
 }
 
@@ -103,63 +105,89 @@ func (t *GetCommitDiffTool) Run(ctx tool.Context, args any) (map[string]any, err
 
 	slog.Debug("tool call", "tool", "get_commit_diff", "sha", shortSHA(commitSHA), "reason", reason)
 
+	// Log tool call
+	if t.logger != nil {
+		t.logger.LogToolCall(t.Name(), argsMap)
+	}
+
 	// Pre-flight check: can we fetch more?
 	canFetch, msg := t.costTracker.CanFetchMore()
 	if !canFetch {
 		slog.Debug("diff fetch denied", "sha", shortSHA(commitSHA), "reason", msg)
-		return map[string]any{
+		result := map[string]any{
 			"error":   msg,
 			"message": "Cannot fetch more diffs. Consider summarizing based on commit messages alone.",
-		}, nil
+		}
+		if t.logger != nil {
+			t.logger.LogToolResult(t.Name(), result)
+		}
+		return result, nil
 	}
 
 	// Fetch the diff
-	result, err := git.GetCommitDiff(t.repoPath, commitSHA)
+	diffResult, err := git.GetCommitDiff(t.repoPath, commitSHA)
 	if err != nil {
 		slog.Debug("diff fetch error", "sha", shortSHA(commitSHA), "error", err)
-		return map[string]any{
+		result := map[string]any{
 			"error":      fmt.Sprintf("Error fetching diff: %v", err),
 			"commit_sha": commitSHA,
-		}, nil
+		}
+		if t.logger != nil {
+			t.logger.LogToolResult(t.Name(), result)
+		}
+		return result, nil
 	}
 
 	// Check size limit
-	if len(result.Diff) > t.costTracker.GetMaxDiffSizeBytes() {
-		slog.Debug("diff too large", "sha", shortSHA(commitSHA), "size", len(result.Diff), "max", t.costTracker.GetMaxDiffSizeBytes())
-		return map[string]any{
+	if len(diffResult.Diff) > t.costTracker.GetMaxDiffSizeBytes() {
+		slog.Debug("diff too large", "sha", shortSHA(commitSHA), "size", len(diffResult.Diff), "max", t.costTracker.GetMaxDiffSizeBytes())
+		result := map[string]any{
 			"error":      "Diff too large",
 			"commit_sha": commitSHA,
-			"size_bytes": len(result.Diff),
+			"size_bytes": len(diffResult.Diff),
 			"max_bytes":  t.costTracker.GetMaxDiffSizeBytes(),
 			"message":    "The commit likely involves extensive changes. Consider this when summarizing.",
-		}, nil
+		}
+		if t.logger != nil {
+			t.logger.LogToolResult(t.Name(), result)
+		}
+		return result, nil
 	}
 
 	// Record the fetch
-	t.costTracker.RecordDiffFetch(commitSHA, len(result.Diff), reason)
+	t.costTracker.RecordDiffFetch(commitSHA, len(diffResult.Diff), reason)
 
-	lines := strings.Count(result.Diff, "\n")
-	slog.Debug("diff fetched", "sha", shortSHA(commitSHA), "bytes", len(result.Diff), "lines", lines, "suppressed", result.SuppressedLines)
+	lines := strings.Count(diffResult.Diff, "\n")
+	slog.Debug("diff fetched", "sha", shortSHA(commitSHA), "bytes", len(diffResult.Diff), "lines", lines, "suppressed", diffResult.SuppressedLines)
 
-	return map[string]any{
+	result := map[string]any{
 		"commit_sha": commitSHA,
-		"diff":       result.Diff,
-		"size_bytes": len(result.Diff),
+		"diff":       diffResult.Diff,
+		"size_bytes": len(diffResult.Diff),
 		"reason":     reason,
-	}, nil
+	}
+
+	// Log tool result
+	if t.logger != nil {
+		t.logger.LogToolResult(t.Name(), result)
+	}
+
+	return result, nil
 }
 
 // GetCommitDiffFullTool provides access to unfiltered commit diffs for the agent
 type GetCommitDiffFullTool struct {
 	repoPath    string
 	costTracker *CostTracker
+	logger      *AnalysisLogger
 }
 
 // NewGetCommitDiffFullTool creates a new GetCommitDiffFullTool
-func NewGetCommitDiffFullTool(repoPath string, costTracker *CostTracker) *GetCommitDiffFullTool {
+func NewGetCommitDiffFullTool(repoPath string, costTracker *CostTracker, logger *AnalysisLogger) *GetCommitDiffFullTool {
 	return &GetCommitDiffFullTool{
 		repoPath:    repoPath,
 		costTracker: costTracker,
+		logger:      logger,
 	}
 }
 
@@ -231,36 +259,53 @@ func (t *GetCommitDiffFullTool) Run(ctx tool.Context, args any) (map[string]any,
 
 	slog.Debug("tool call", "tool", "get_commit_diff_full", "sha", shortSHA(commitSHA), "reason", reason)
 
+	// Log tool call
+	if t.logger != nil {
+		t.logger.LogToolCall(t.Name(), argsMap)
+	}
+
 	// Pre-flight check: can we fetch more?
 	canFetch, msg := t.costTracker.CanFetchMore()
 	if !canFetch {
 		slog.Debug("full diff fetch denied", "sha", shortSHA(commitSHA), "reason", msg)
-		return map[string]any{
+		result := map[string]any{
 			"error":   msg,
 			"message": "Cannot fetch more diffs. Consider summarizing based on commit messages alone.",
-		}, nil
+		}
+		if t.logger != nil {
+			t.logger.LogToolResult(t.Name(), result)
+		}
+		return result, nil
 	}
 
 	// Fetch the full unfiltered diff
 	diff, err := git.GetCommitDiffFull(t.repoPath, commitSHA)
 	if err != nil {
 		slog.Debug("full diff fetch error", "sha", shortSHA(commitSHA), "error", err)
-		return map[string]any{
+		result := map[string]any{
 			"error":      fmt.Sprintf("Error fetching full diff: %v", err),
 			"commit_sha": commitSHA,
-		}, nil
+		}
+		if t.logger != nil {
+			t.logger.LogToolResult(t.Name(), result)
+		}
+		return result, nil
 	}
 
 	// Check size limit
 	if len(diff) > t.costTracker.GetMaxDiffSizeBytes() {
 		slog.Debug("full diff too large", "sha", shortSHA(commitSHA), "size", len(diff), "max", t.costTracker.GetMaxDiffSizeBytes())
-		return map[string]any{
+		result := map[string]any{
 			"error":      "Diff too large",
 			"commit_sha": commitSHA,
 			"size_bytes": len(diff),
 			"max_bytes":  t.costTracker.GetMaxDiffSizeBytes(),
 			"message":    "The commit involves extensive changes. Consider this when summarizing.",
-		}, nil
+		}
+		if t.logger != nil {
+			t.logger.LogToolResult(t.Name(), result)
+		}
+		return result, nil
 	}
 
 	// Record the fetch
@@ -269,24 +314,33 @@ func (t *GetCommitDiffFullTool) Run(ctx tool.Context, args any) (map[string]any,
 	lines := strings.Count(diff, "\n")
 	slog.Debug("full diff fetched", "sha", shortSHA(commitSHA), "bytes", len(diff), "lines", lines)
 
-	return map[string]any{
+	result := map[string]any{
 		"commit_sha": commitSHA,
 		"diff":       diff,
 		"size_bytes": len(diff),
 		"reason":     reason,
 		"note":       "This is the complete unfiltered diff including vendor/node_modules/lock files",
-	}, nil
+	}
+
+	// Log tool result
+	if t.logger != nil {
+		t.logger.LogToolResult(t.Name(), result)
+	}
+
+	return result, nil
 }
 
 // GetFullCommitMessageTool provides access to full commit messages
 type GetFullCommitMessageTool struct {
 	repoPath string
+	logger   *AnalysisLogger
 }
 
 // NewGetFullCommitMessageTool creates a new GetFullCommitMessageTool
-func NewGetFullCommitMessageTool(repoPath string) *GetFullCommitMessageTool {
+func NewGetFullCommitMessageTool(repoPath string, logger *AnalysisLogger) *GetFullCommitMessageTool {
 	return &GetFullCommitMessageTool{
 		repoPath: repoPath,
+		logger:   logger,
 	}
 }
 
@@ -350,35 +404,53 @@ func (t *GetFullCommitMessageTool) Run(ctx tool.Context, args any) (map[string]a
 
 	slog.Debug("tool call", "tool", "get_full_commit_message", "sha", shortSHA(commitSHA))
 
+	// Log tool call
+	if t.logger != nil {
+		t.logger.LogToolCall(t.Name(), argsMap)
+	}
+
 	commit, err := git.GetCommitInfo(t.repoPath, commitSHA)
 	if err != nil {
 		slog.Debug("commit info error", "sha", shortSHA(commitSHA), "error", err)
-		return map[string]any{
+		result := map[string]any{
 			"error":      fmt.Sprintf("Error fetching commit info: %v", err),
 			"commit_sha": commitSHA,
-		}, nil
+		}
+		if t.logger != nil {
+			t.logger.LogToolResult(t.Name(), result)
+		}
+		return result, nil
 	}
 
 	slog.Debug("commit message fetched", "sha", shortSHA(commitSHA), "length", len(commit.Message))
 
-	return map[string]any{
+	result := map[string]any{
 		"commit_sha":     commitSHA,
 		"author":         commit.Author,
 		"date":           commit.Date.Format("2006-01-02 15:04"),
 		"full_message":   commit.Message,
 		"message_length": len(commit.Message),
-	}, nil
+	}
+
+	// Log tool result
+	if t.logger != nil {
+		t.logger.LogToolResult(t.Name(), result)
+	}
+
+	return result, nil
 }
 
 // GetAuthorStatsTool provides author statistics for the agent
 type GetAuthorStatsTool struct {
 	repoPath string
+	logger   *AnalysisLogger
 }
 
 // NewGetAuthorStatsTool creates a new GetAuthorStatsTool
-func NewGetAuthorStatsTool(repoPath string) *GetAuthorStatsTool {
+func NewGetAuthorStatsTool(repoPath string, logger *AnalysisLogger) *GetAuthorStatsTool {
 	return &GetAuthorStatsTool{
 		repoPath: repoPath,
+		logger:   logger,
 	}
 }
 
@@ -441,32 +513,52 @@ func (t *GetAuthorStatsTool) Run(ctx tool.Context, args any) (map[string]any, er
 
 	slog.Debug("tool call", "tool", "get_author_stats", "author", authorName)
 
+	// Log tool call
+	if t.logger != nil {
+		t.logger.LogToolCall(t.Name(), argsMap)
+	}
+
 	stats, err := git.GetAuthorStats(t.repoPath, authorName)
 	if err != nil {
 		slog.Debug("author stats error", "author", authorName, "error", err)
-		return map[string]any{
+		result := map[string]any{
 			"error":       fmt.Sprintf("Error fetching author stats: %v", err),
 			"author_name": authorName,
-		}, nil
+		}
+		if t.logger != nil {
+			t.logger.LogToolResult(t.Name(), result)
+		}
+		return result, nil
 	}
 
 	if stats.TotalCommits == 0 {
 		slog.Debug("author not found", "author", authorName)
-		return map[string]any{
+		result := map[string]any{
 			"author_name":   authorName,
 			"total_commits": 0,
 			"message":       "No commits found for this author",
-		}, nil
+		}
+		if t.logger != nil {
+			t.logger.LogToolResult(t.Name(), result)
+		}
+		return result, nil
 	}
 
 	slog.Debug("author stats fetched", "author", stats.Name, "commits", stats.TotalCommits)
 
-	return map[string]any{
+	result := map[string]any{
 		"author_name":   stats.Name,
 		"total_commits": stats.TotalCommits,
 		"first_commit":  stats.FirstCommit.Format("2006-01-02"),
 		"last_commit":   stats.LastCommit.Format("2006-01-02"),
-	}, nil
+	}
+
+	// Log tool result
+	if t.logger != nil {
+		t.logger.LogToolResult(t.Name(), result)
+	}
+
+	return result, nil
 }
 
 // functionTool is an interface for tools that provide function declarations

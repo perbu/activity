@@ -11,6 +11,7 @@ import (
 	"github.com/perbu/activity/internal/db"
 	"github.com/perbu/activity/internal/email"
 	"github.com/perbu/activity/internal/newsletter"
+	"github.com/perbu/activity/internal/progress"
 )
 
 // NewsletterService handles newsletter subscriber management and sending
@@ -159,7 +160,7 @@ func (s *NewsletterService) Send(ctx context.Context, since time.Duration, dryRu
 	sender := newsletter.NewSender(s.db, composer, client, dryRun, output)
 
 	sinceTime := time.Now().Add(-since)
-	slog.Info("Sending newsletters", "since", sinceTime.Format("2006-01-02 15:04"), "dry_run", dryRun)
+	progress.Log(ctx, "Sending newsletters", "since", sinceTime.Format("2006-01-02 15:04"), "dry_run", dryRun)
 
 	// Send to all subscribers
 	result, err := sender.SendAll(ctx, sinceTime)
@@ -167,7 +168,7 @@ func (s *NewsletterService) Send(ctx context.Context, since time.Duration, dryRu
 		return nil, fmt.Errorf("failed to send newsletters: %w", err)
 	}
 
-	slog.Info("Newsletter send complete", "sent", result.Sent, "skipped", result.Skipped, "errors", result.Errors)
+	progress.Log(ctx, "Newsletter send complete", "sent", result.Sent, "skipped", result.Skipped, "errors", result.Errors)
 
 	return &SendResult{
 		Sent:             result.Sent,

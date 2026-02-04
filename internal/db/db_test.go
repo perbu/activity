@@ -94,7 +94,7 @@ func TestRepository_Create(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, err := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, err := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	if err != nil {
 		t.Fatalf("CreateRepository() error = %v", err)
 	}
@@ -124,7 +124,7 @@ func TestRepository_CreateWithDescription(t *testing.T) {
 	defer cleanup()
 
 	desc := sql.NullString{String: "A test repository", Valid: true}
-	repo, err := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", true, desc)
+	repo, err := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", true, false, desc, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	if err != nil {
 		t.Fatalf("CreateRepository() error = %v", err)
 	}
@@ -141,12 +141,12 @@ func TestRepository_CreateDuplicate(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	_, err := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	_, err := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	if err != nil {
 		t.Fatalf("first CreateRepository() error = %v", err)
 	}
 
-	_, err = db.CreateRepository("test-repo", "https://github.com/other/repo", "main", false, sql.NullString{})
+	_, err = db.CreateRepository("test-repo", "https://github.com/other/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	if err == nil {
 		t.Error("expected error for duplicate name, got nil")
 	}
@@ -156,7 +156,7 @@ func TestRepository_Get(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	created, err := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	created, err := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	if err != nil {
 		t.Fatalf("CreateRepository() error = %v", err)
 	}
@@ -203,9 +203,9 @@ func TestRepository_List(t *testing.T) {
 	defer cleanup()
 
 	// Create some repositories
-	repo1, _ := db.CreateRepository("repo-a", "https://github.com/test/a", "main", false, sql.NullString{})
-	db.CreateRepository("repo-b", "https://github.com/test/b", "main", false, sql.NullString{})
-	db.CreateRepository("repo-c", "https://github.com/test/c", "main", false, sql.NullString{})
+	repo1, _ := db.CreateRepository("repo-a", "https://github.com/test/a", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
+	db.CreateRepository("repo-b", "https://github.com/test/b", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
+	db.CreateRepository("repo-c", "https://github.com/test/c", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 
 	// Deactivate one
 	db.SetRepositoryActive(repo1.ID, false)
@@ -244,9 +244,9 @@ func TestRepository_ListOrdering(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	db.CreateRepository("zebra", "https://github.com/test/z", "main", false, sql.NullString{})
-	db.CreateRepository("alpha", "https://github.com/test/a", "main", false, sql.NullString{})
-	db.CreateRepository("middle", "https://github.com/test/m", "main", false, sql.NullString{})
+	db.CreateRepository("zebra", "https://github.com/test/z", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
+	db.CreateRepository("alpha", "https://github.com/test/a", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
+	db.CreateRepository("middle", "https://github.com/test/m", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 
 	repos, err := db.ListRepositories(nil)
 	if err != nil {
@@ -269,7 +269,7 @@ func TestRepository_Update(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, err := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, err := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	if err != nil {
 		t.Fatalf("CreateRepository() error = %v", err)
 	}
@@ -315,7 +315,7 @@ func TestRepository_Delete(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, err := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, err := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	if err != nil {
 		t.Fatalf("CreateRepository() error = %v", err)
 	}
@@ -334,7 +334,7 @@ func TestRepository_SetActive(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 
 	// Deactivate
 	if err := db.SetRepositoryActive(repo.ID, false); err != nil {
@@ -363,7 +363,7 @@ func TestActivityRun_Create(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 
 	run, err := db.CreateActivityRun(repo.ID, "abc123", "def456")
 	if err != nil {
@@ -391,7 +391,7 @@ func TestActivityRun_Get(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	created, _ := db.CreateActivityRun(repo.ID, "abc123", "def456")
 
 	run, err := db.GetActivityRun(created.ID)
@@ -418,7 +418,7 @@ func TestActivityRun_GetLatest(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 
 	// No runs yet
 	run, err := db.GetLatestActivityRun(repo.ID)
@@ -449,7 +449,7 @@ func TestActivityRun_Update(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	run, _ := db.CreateActivityRun(repo.ID, "abc123", "def456")
 
 	// Update fields
@@ -636,7 +636,7 @@ func TestSubscription_Create(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	sub, _ := db.CreateSubscriber("test@example.com", false)
 
 	subscription, err := db.CreateSubscription(sub.ID, repo.ID)
@@ -659,7 +659,7 @@ func TestSubscription_CreateDuplicate(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	sub, _ := db.CreateSubscriber("test@example.com", false)
 
 	_, err := db.CreateSubscription(sub.ID, repo.ID)
@@ -677,7 +677,7 @@ func TestSubscription_Get(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	sub, _ := db.CreateSubscriber("test@example.com", false)
 	created, _ := db.CreateSubscription(sub.ID, repo.ID)
 
@@ -704,8 +704,8 @@ func TestSubscription_List(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo1, _ := db.CreateRepository("repo-1", "https://github.com/test/1", "main", false, sql.NullString{})
-	repo2, _ := db.CreateRepository("repo-2", "https://github.com/test/2", "main", false, sql.NullString{})
+	repo1, _ := db.CreateRepository("repo-1", "https://github.com/test/1", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
+	repo2, _ := db.CreateRepository("repo-2", "https://github.com/test/2", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	sub, _ := db.CreateSubscriber("test@example.com", false)
 
 	db.CreateSubscription(sub.ID, repo1.ID)
@@ -725,7 +725,7 @@ func TestSubscription_Delete(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	sub, _ := db.CreateSubscriber("test@example.com", false)
 	subscription, _ := db.CreateSubscription(sub.ID, repo.ID)
 
@@ -743,7 +743,7 @@ func TestSubscription_DeleteBySubscriberAndRepo(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	sub, _ := db.CreateSubscriber("test@example.com", false)
 	db.CreateSubscription(sub.ID, repo.ID)
 
@@ -763,7 +763,7 @@ func TestNewsletterSend_Create(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	sub, _ := db.CreateSubscriber("test@example.com", false)
 	run, _ := db.CreateActivityRun(repo.ID, "abc123", "def456")
 
@@ -787,7 +787,7 @@ func TestNewsletterSend_CreateWithoutMessageID(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	sub, _ := db.CreateSubscriber("test@example.com", false)
 	run, _ := db.CreateActivityRun(repo.ID, "abc123", "def456")
 
@@ -805,7 +805,7 @@ func TestNewsletterSend_HasBeenSent(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	sub, _ := db.CreateSubscriber("test@example.com", false)
 	run, _ := db.CreateActivityRun(repo.ID, "abc123", "def456")
 
@@ -836,7 +836,7 @@ func TestWeeklyReport_Create(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 
 	report := &WeeklyReport{
 		RepoID:      repo.ID,
@@ -872,7 +872,7 @@ func TestWeeklyReport_CreateDuplicate(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 
 	report := &WeeklyReport{
 		RepoID:    repo.ID,
@@ -897,7 +897,7 @@ func TestWeeklyReport_Get(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 
 	report := &WeeklyReport{
 		RepoID:    repo.ID,
@@ -940,7 +940,7 @@ func TestWeeklyReport_GetLatest(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 
 	// No reports yet
 	latest, err := db.GetLatestWeeklyReport(repo.ID)
@@ -980,7 +980,7 @@ func TestWeeklyReport_List(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 
 	// Create reports for 2023 and 2024
 	db.CreateWeeklyReport(&WeeklyReport{
@@ -1029,8 +1029,8 @@ func TestWeeklyReport_ListAll(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo1, _ := db.CreateRepository("repo-1", "https://github.com/test/1", "main", false, sql.NullString{})
-	repo2, _ := db.CreateRepository("repo-2", "https://github.com/test/2", "main", false, sql.NullString{})
+	repo1, _ := db.CreateRepository("repo-1", "https://github.com/test/1", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
+	repo2, _ := db.CreateRepository("repo-2", "https://github.com/test/2", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 
 	db.CreateWeeklyReport(&WeeklyReport{
 		RepoID:    repo1.ID,
@@ -1060,7 +1060,7 @@ func TestWeeklyReport_Update(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 
 	report := &WeeklyReport{
 		RepoID:    repo.ID,
@@ -1095,7 +1095,7 @@ func TestWeeklyReport_Exists(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 
 	// Doesn't exist yet
 	exists, err := db.WeeklyReportExists(repo.ID, 2024, 1)
@@ -1128,7 +1128,7 @@ func TestWeeklyReport_Delete(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 
 	report, _ := db.CreateWeeklyReport(&WeeklyReport{
 		RepoID:    repo.ID,
@@ -1288,8 +1288,8 @@ func TestGetUnsentActivityRuns_SubscribeAll(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo1, _ := db.CreateRepository("repo-1", "https://github.com/test/1", "main", false, sql.NullString{})
-	repo2, _ := db.CreateRepository("repo-2", "https://github.com/test/2", "main", false, sql.NullString{})
+	repo1, _ := db.CreateRepository("repo-1", "https://github.com/test/1", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
+	repo2, _ := db.CreateRepository("repo-2", "https://github.com/test/2", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 
 	// Create subscriber with subscribe_all = true
 	sub, _ := db.CreateSubscriber("all@example.com", true)
@@ -1335,8 +1335,8 @@ func TestGetUnsentActivityRuns_SpecificRepos(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo1, _ := db.CreateRepository("repo-1", "https://github.com/test/1", "main", false, sql.NullString{})
-	repo2, _ := db.CreateRepository("repo-2", "https://github.com/test/2", "main", false, sql.NullString{})
+	repo1, _ := db.CreateRepository("repo-1", "https://github.com/test/1", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
+	repo2, _ := db.CreateRepository("repo-2", "https://github.com/test/2", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 
 	// Create subscriber subscribed only to repo1
 	sub, _ := db.CreateSubscriber("specific@example.com", false)
@@ -1369,9 +1369,9 @@ func TestGetReposForSubscriber_SubscribeAll(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	db.CreateRepository("repo-1", "https://github.com/test/1", "main", false, sql.NullString{})
-	db.CreateRepository("repo-2", "https://github.com/test/2", "main", false, sql.NullString{})
-	repo3, _ := db.CreateRepository("repo-3", "https://github.com/test/3", "main", false, sql.NullString{})
+	db.CreateRepository("repo-1", "https://github.com/test/1", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
+	db.CreateRepository("repo-2", "https://github.com/test/2", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
+	repo3, _ := db.CreateRepository("repo-3", "https://github.com/test/3", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	db.SetRepositoryActive(repo3.ID, false) // Deactivate one
 
 	sub, _ := db.CreateSubscriber("all@example.com", true)
@@ -1391,9 +1391,9 @@ func TestGetReposForSubscriber_SpecificRepos(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo1, _ := db.CreateRepository("repo-1", "https://github.com/test/1", "main", false, sql.NullString{})
-	repo2, _ := db.CreateRepository("repo-2", "https://github.com/test/2", "main", false, sql.NullString{})
-	db.CreateRepository("repo-3", "https://github.com/test/3", "main", false, sql.NullString{})
+	repo1, _ := db.CreateRepository("repo-1", "https://github.com/test/1", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
+	repo2, _ := db.CreateRepository("repo-2", "https://github.com/test/2", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
+	db.CreateRepository("repo-3", "https://github.com/test/3", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 
 	sub, _ := db.CreateSubscriber("specific@example.com", false)
 	db.CreateSubscription(sub.ID, repo1.ID)
@@ -1415,7 +1415,7 @@ func TestRepository_DeleteCascadesActivityRuns(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	run, _ := db.CreateActivityRun(repo.ID, "abc", "def")
 
 	// Delete the repository - activity runs should cascade delete
@@ -1435,7 +1435,7 @@ func TestSubscriber_DeleteCascadesSubscriptions(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, sql.NullString{})
+	repo, _ := db.CreateRepository("test-repo", "https://github.com/test/repo", "main", false, false, sql.NullString{}, sql.NullString{}, sql.NullString{}, sql.NullString{})
 	sub, _ := db.CreateSubscriber("test@example.com", false)
 	subscription, _ := db.CreateSubscription(sub.ID, repo.ID)
 

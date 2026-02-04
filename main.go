@@ -12,6 +12,7 @@ import (
 	"github.com/perbu/activity/internal/config"
 	"github.com/perbu/activity/internal/db"
 	"github.com/perbu/activity/internal/github"
+	"github.com/perbu/activity/internal/progress"
 	"github.com/perbu/activity/internal/service"
 	"github.com/perbu/activity/internal/web"
 )
@@ -26,9 +27,10 @@ func setupLogger(debug bool) {
 		level = slog.LevelDebug
 	}
 
-	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+	base := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: level,
 	})
+	handler := progress.NewHandler(base)
 	slog.SetDefault(slog.New(handler))
 }
 

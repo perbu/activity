@@ -11,6 +11,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.40.0
 	github.com/yuin/goldmark v1.7.16
+	golang.org/x/time v0.14.0
 	google.golang.org/adk v0.3.0
 	google.golang.org/genai v1.42.0
 	gopkg.in/yaml.v3 v3.0.1

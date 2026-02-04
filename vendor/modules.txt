@@ -584,6 +584,9 @@ golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
 golang.org/x/text/unicode/rangetable
+# golang.org/x/time v0.14.0
+## explicit; go 1.24.0
+golang.org/x/time/rate
 # google.golang.org/adk v0.3.0
 ## explicit; go 1.24.4
 google.golang.org/adk/agent

@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/perbu/activity/internal/progress"
 	"github.com/perbu/activity/internal/service"
 )
 
@@ -51,7 +52,12 @@ func (s *Server) handleAdminRepos(w http.ResponseWriter, r *http.Request) {
 			URL:         repo.URL,
 			Branch:      repo.Branch,
 			Active:      repo.Active,
+			Private:     repo.Private,
+			External:    repo.External,
 			Description: repo.Description.String,
+			ForgeType:   repo.ForgeType.String,
+			ForgeOwner:  repo.ForgeOwner.String,
+			ForgeRepo:   repo.ForgeRepo.String,
 			ReportCount: len(reports),
 			LastReport:  "No reports",
 		}
@@ -84,6 +90,10 @@ func (s *Server) handleAdminRepoAdd(w http.ResponseWriter, r *http.Request) {
 	url := r.FormValue("url")
 	branch := r.FormValue("branch")
 	private := r.FormValue("private") == "on"
+	external := r.FormValue("external") == "on"
+	forgeType := r.FormValue("forge_type")
+	forgeOwner := r.FormValue("forge_owner")
+	forgeRepo := r.FormValue("forge_repo")
 
 	if name == "" || url == "" {
 		http.Error(w, "Name and URL are required", http.StatusBadRequest)
@@ -94,10 +104,14 @@ func (s *Server) handleAdminRepoAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err := s.services.Repo.Add(context.Background(), service.AddOptions{
-		Name:    name,
-		URL:     url,
-		Branch:  branch,
-		Private: private,
+		Name:       name,
+		URL:        url,
+		Branch:     branch,
+		Private:    private,
+		External:   external,
+		ForgeType:  forgeType,
+		ForgeOwner: forgeOwner,
+		ForgeRepo:  forgeRepo,
 	})
 	if err != nil {
 		slog.Error("Failed to add repository", "name", name, "error", err)
@@ -181,6 +195,44 @@ func (s *Server) handleAdminRepoSetURL(w http.ResponseWriter, r *http.Request) {
 	if err := s.services.Repo.SetURL(name, url); err != nil {
 		slog.Error("Failed to set repository URL", "name", name, "error", err)
 		http.Error(w, "Failed to set repository URL: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/repos", http.StatusSeeOther)
+}
+
+// handleAdminRepoUpdate handles updating repository settings
+func (s *Server) handleAdminRepoUpdate(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	name := r.FormValue("name")
+	url := r.FormValue("url")
+	branch := r.FormValue("branch")
+	private := r.FormValue("private") == "on"
+	external := r.FormValue("external") == "on"
+	forgeType := r.FormValue("forge_type")
+	forgeOwner := r.FormValue("forge_owner")
+	forgeRepo := r.FormValue("forge_repo")
+
+	if name == "" {
+		http.Error(w, "Repository name is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.services.Repo.UpdateSettings(name, service.UpdateOptions{
+		URL:        url,
+		Branch:     branch,
+		Private:    private,
+		External:   external,
+		ForgeType:  forgeType,
+		ForgeOwner: forgeOwner,
+		ForgeRepo:  forgeRepo,
+	}); err != nil {
+		slog.Error("Failed to update repository settings", "name", name, "error", err)
+		http.Error(w, "Failed to update repository: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -482,4 +534,119 @@ func (s *Server) renderAdminError(w http.ResponseWriter, r *http.Request, tmpl *
 
 	w.WriteHeader(http.StatusInternalServerError)
 	s.render(w, tmpl, data)
+}
+
+// handleAdminUpdateReposStream handles updating all repositories with SSE streaming
+func (s *Server) handleAdminUpdateReposStream(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	sink := func(msg string) {
+		fmt.Fprintf(w, "data: %s\n\n", msg)
+		flusher.Flush()
+	}
+
+	ctx := progress.WithProgressSink(r.Context(), sink)
+	results, err := s.services.Repo.UpdateAll(ctx)
+
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+		flusher.Flush()
+	} else {
+		fmt.Fprintf(w, "event: done\ndata: Updated %d repositories\n\n", len(results))
+		flusher.Flush()
+	}
+}
+
+// handleAdminGenerateReportStream handles generating reports with SSE streaming
+func (s *Server) handleAdminGenerateReportStream(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	sink := func(msg string) {
+		fmt.Fprintf(w, "data: %s\n\n", msg)
+		flusher.Flush()
+	}
+
+	ctx := progress.WithProgressSink(r.Context(), sink)
+	results, err := s.services.Report.GenerateLastWeek(ctx, false)
+
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+		flusher.Flush()
+	} else {
+		generated := 0
+		for _, result := range results {
+			generated += result.Generated
+		}
+		fmt.Fprintf(w, "event: done\ndata: Generated %d reports for %d repositories\n\n", generated, len(results))
+		flusher.Flush()
+	}
+}
+
+// handleAdminSendNewsletterStream handles sending newsletters with SSE streaming
+func (s *Server) handleAdminSendNewsletterStream(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		fmt.Fprintf(w, "event: error\ndata: Invalid form data\n\n")
+		flusher.Flush()
+		return
+	}
+
+	sinceStr := r.FormValue("since")
+	if sinceStr == "" {
+		sinceStr = "7d"
+	}
+
+	since, err := service.ParseSinceDuration(sinceStr)
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: Invalid duration: %s\n\n", err.Error())
+		flusher.Flush()
+		return
+	}
+
+	dryRun := r.FormValue("dry_run") == "on"
+
+	sink := func(msg string) {
+		fmt.Fprintf(w, "data: %s\n\n", msg)
+		flusher.Flush()
+	}
+
+	ctx := progress.WithProgressSink(r.Context(), sink)
+	result, err := s.services.Newsletter.Send(ctx, since, dryRun, os.Stdout)
+
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+		flusher.Flush()
+	} else {
+		msg := fmt.Sprintf("Sent %d newsletters (skipped %d, errors %d)", result.Sent, result.Skipped, result.Errors)
+		if dryRun {
+			msg = "[DRY RUN] " + msg
+		}
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", msg)
+		flusher.Flush()
+	}
 }

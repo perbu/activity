@@ -53,16 +53,21 @@ type RepoSummary struct {
 	URL         string
 	Branch      string
 	Active      bool
+	Private     bool   // Requires GitHub App authentication
+	External    bool   // External repo: include contributor analysis in summaries
 	Description string // AI-generated description from README
+	ForgeType   string // "github", "forgejo", or ""
+	ForgeOwner  string // e.g., "varnish" (GitHub) or instance name (Forgejo)
+	ForgeRepo   string // e.g., "varnish-cache-plus" or "owner/repo"
 	ReportCount int
-	LastReport  string // formatted date or "No reports"
-	Sparkline []SparklineBar // commit activity for last 8 weeks (oldest to newest)
+	LastReport  string         // formatted date or "No reports"
+	Sparkline   []SparklineBar // commit activity for last 8 weeks (oldest to newest)
 }
 
 // SparklineBar represents a single bar in a sparkline chart
 type SparklineBar struct {
-	Value   int // raw commit count
-	Height  int // percentage height (0-100)
+	Value  int // raw commit count
+	Height int // percentage height (0-100)
 }
 
 // DashboardData is the view model for the dashboard/index page
@@ -86,7 +91,19 @@ type RepoReportsData struct {
 
 // ReportViewData is the view model for a single report detail
 type ReportViewData struct {
-	Report ReportDetail
+	Report       ReportDetail
+	SourceRunID  int64
+	AnalysisLogs []AnalysisLogView
+}
+
+// AnalysisLogView is a view model for analysis log entries
+type AnalysisLogView struct {
+	ID        int64
+	LogType   string // "prompt", "response", "tool_call", "tool_result"
+	ToolName  string // Only for tool types
+	Content   string
+	Sequence  int
+	CreatedAt string
 }
 
 // AdminDashboardData is the view model for the admin dashboard

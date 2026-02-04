@@ -26,6 +26,30 @@
                     Private (requires GitHub App)
                 </label>
             </div>
+            <div class="form-row checkbox-row">
+                <label>
+                    <input type="checkbox" name="external">
+                    External (include contributor analysis)
+                </label>
+            </div>
+            <div class="form-row">
+                <label for="forge_type">Forge</label>
+                <select id="forge_type" name="forge_type" onchange="toggleForgeDetails(this, 'add')">
+                    <option value="">None</option>
+                    <option value="github">GitHub</option>
+                    <option value="forgejo">Forgejo</option>
+                </select>
+            </div>
+            <div class="forge-details" id="forge-details-add" style="display:none">
+                <div class="form-row">
+                    <label for="forge_owner">Owner/Instance</label>
+                    <input type="text" id="forge_owner" name="forge_owner" placeholder="varnish or codeberg">
+                </div>
+                <div class="form-row">
+                    <label for="forge_repo">Repo</label>
+                    <input type="text" id="forge_repo" name="forge_repo" placeholder="varnish-cache-plus or owner/repo">
+                </div>
+            </div>
             <button type="submit" class="btn">Add Repository</button>
         </form>
     </div>
@@ -39,6 +63,7 @@
                     <th>Name</th>
                     <th>URL</th>
                     <th>Branch</th>
+                    <th>Type</th>
                     <th>Status</th>
                     <th>Reports</th>
                     <th>Actions</th>
@@ -46,10 +71,17 @@
             </thead>
             <tbody>
                 {{range .Content.Repos}}
-                <tr>
+                <tr class="repo-row" data-name="{{.Name}}">
                     <td><a href="/repos/{{.Name}}">{{.Name}}</a></td>
                     <td class="url-cell">{{.URL}}</td>
                     <td>{{.Branch}}</td>
+                    <td class="type-cell">
+                        {{if .Private}}<span class="badge badge-private">Private</span>{{end}}
+                        {{if .External}}<span class="badge badge-external">External</span>{{end}}
+                        {{if and (not .Private) (not .External)}}<span class="badge badge-default">Internal</span>{{end}}
+                        {{if eq .ForgeType "github"}}<span class="badge badge-github">GitHub</span>{{end}}
+                        {{if eq .ForgeType "forgejo"}}<span class="badge badge-forgejo">Forgejo</span>{{end}}
+                    </td>
                     <td>
                         {{if .Active}}
                         <span class="status-active">Active</span>
@@ -59,6 +91,7 @@
                     </td>
                     <td>{{.ReportCount}}</td>
                     <td class="actions-cell">
+                        <button type="button" class="btn-small btn-edit" onclick="toggleEdit('{{.Name}}')">Edit</button>
                         {{if .Active}}
                         <form action="/admin/repos/toggle" method="POST" class="inline-form">
                             <input type="hidden" name="name" value="{{.Name}}">
@@ -75,6 +108,57 @@
                         <form action="/admin/repos/remove" method="POST" class="inline-form" onsubmit="return confirm('Are you sure you want to remove {{.Name}}?');">
                             <input type="hidden" name="name" value="{{.Name}}">
                             <button type="submit" class="btn-small btn-danger">Remove</button>
+                        </form>
+                    </td>
+                </tr>
+                <tr class="edit-row" id="edit-{{.Name}}" style="display: none;">
+                    <td colspan="7">
+                        <form action="/admin/repos/update" method="POST" class="edit-form">
+                            <input type="hidden" name="name" value="{{.Name}}">
+                            <div class="edit-form-grid">
+                                <div class="form-row">
+                                    <label>URL</label>
+                                    <input type="url" name="url" value="{{.URL}}" placeholder="https://github.com/user/repo">
+                                </div>
+                                <div class="form-row">
+                                    <label>Branch</label>
+                                    <input type="text" name="branch" value="{{.Branch}}" placeholder="main">
+                                </div>
+                                <div class="form-row checkbox-row">
+                                    <label>
+                                        <input type="checkbox" name="private" {{if .Private}}checked{{end}}>
+                                        Private
+                                    </label>
+                                </div>
+                                <div class="form-row checkbox-row">
+                                    <label>
+                                        <input type="checkbox" name="external" {{if .External}}checked{{end}}>
+                                        External
+                                    </label>
+                                </div>
+                                <div class="form-row">
+                                    <label>Forge</label>
+                                    <select name="forge_type" onchange="toggleForgeDetails(this, '{{.Name}}')">
+                                        <option value="">None</option>
+                                        <option value="github" {{if eq .ForgeType "github"}}selected{{end}}>GitHub</option>
+                                        <option value="forgejo" {{if eq .ForgeType "forgejo"}}selected{{end}}>Forgejo</option>
+                                    </select>
+                                </div>
+                                <div class="forge-details" id="forge-details-{{.Name}}" {{if not .ForgeType}}style="display:none"{{end}}>
+                                    <div class="form-row">
+                                        <label>Owner/Instance</label>
+                                        <input type="text" name="forge_owner" value="{{.ForgeOwner}}" placeholder="varnish or codeberg">
+                                    </div>
+                                    <div class="form-row">
+                                        <label>Repo</label>
+                                        <input type="text" name="forge_repo" value="{{.ForgeRepo}}" placeholder="varnish-cache-plus or owner/repo">
+                                    </div>
+                                </div>
+                                <div class="edit-actions">
+                                    <button type="submit" class="btn">Save</button>
+                                    <button type="button" class="btn btn-secondary" onclick="toggleEdit('{{.Name}}')">Cancel</button>
+                                </div>
+                            </div>
                         </form>
                     </td>
                 </tr>
@@ -165,6 +249,16 @@
     opacity: 0.9;
 }
 
+.btn-secondary {
+    background: var(--bg-secondary);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+    border-color: var(--accent);
+}
+
 .list-section h2 {
     margin-bottom: 1rem;
 }
@@ -194,6 +288,51 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--text-muted);
+}
+
+.type-cell {
+    white-space: nowrap;
+}
+
+.badge {
+    display: inline-block;
+    padding: 0.125rem 0.375rem;
+    font-size: 0.625rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 2px;
+    margin-right: 0.25rem;
+}
+
+.badge-private {
+    background: #4a4a6a;
+    color: #c4c4e4;
+}
+
+.badge-external {
+    background: #2d4a3a;
+    color: #8fc4a4;
+}
+
+.badge-default {
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+}
+
+.badge-github {
+    background: #238636;
+    color: #ffffff;
+}
+
+.badge-forgejo {
+    background: #fb923c;
+    color: #1a1a2e;
+}
+
+.forge-details {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
 }
 
 .status-active {
@@ -228,9 +367,40 @@
     color: var(--accent);
 }
 
+.btn-edit:hover {
+    border-color: #6699ff;
+    color: #6699ff;
+}
+
 .btn-danger:hover {
     border-color: #ff6b6b;
     color: #ff6b6b;
+}
+
+.edit-row {
+    background: var(--bg-secondary);
+}
+
+.edit-row td {
+    padding: 1rem;
+}
+
+.edit-form-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+}
+
+.edit-form-grid .form-row input[type="text"],
+.edit-form-grid .form-row input[type="url"] {
+    width: 250px;
+}
+
+.edit-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-left: auto;
 }
 
 .empty-state {
@@ -239,4 +409,20 @@
     padding: 2rem;
 }
 </style>
+
+<script>
+function toggleEdit(name) {
+    const editRow = document.getElementById('edit-' + name);
+    if (editRow) {
+        editRow.style.display = editRow.style.display === 'none' ? 'table-row' : 'none';
+    }
+}
+
+function toggleForgeDetails(select, id) {
+    const details = document.getElementById('forge-details-' + id);
+    if (details) {
+        details.style.display = select.value ? 'flex' : 'none';
+    }
+}
+</script>
 {{end}}

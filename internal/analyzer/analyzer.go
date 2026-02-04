@@ -37,25 +37,35 @@ func (a *Analyzer) AnalyzeCommits(ctx context.Context, repo *db.Repository, comm
 		return "No new commits to analyze.", nil
 	}
 
-	// Route to agent-based or simple analyzer
+	// Route to agent-based or simple analyzer (no logger for standalone calls)
 	if a.config.LLM.UseAgent {
-		summary, _, err := a.analyzeWithAgent(ctx, repo, commits, branchActivity, previousSummary)
+		summary, _, err := a.analyzeWithAgent(ctx, repo, commits, branchActivity, previousSummary, nil)
 		return summary, err
 	}
 
 	// Fall back to Phase 2 simple analyzer
-	return a.analyzeWithSimpleLLM(ctx, repo, commits, branchActivity, previousSummary)
+	return a.analyzeWithSimpleLLM(ctx, repo, commits, branchActivity, previousSummary, nil)
 }
 
 // analyzeWithSimpleLLM performs simple LLM-based analysis (Phase 2)
-func (a *Analyzer) analyzeWithSimpleLLM(ctx context.Context, repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, previousSummary string) (string, error) {
+func (a *Analyzer) analyzeWithSimpleLLM(ctx context.Context, repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, previousSummary string, logger *AnalysisLogger) (string, error) {
 	// Build prompt from commits
 	prompt := buildAnalysisPrompt(repo, commits, branchActivity, a.config, previousSummary)
+
+	// Log prompt if logger available
+	if logger != nil {
+		logger.LogPrompt(prompt)
+	}
 
 	// Call LLM
 	summary, err := a.llmClient.GenerateText(ctx, prompt)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate summary: %w", err)
+	}
+
+	// Log response if logger available
+	if logger != nil {
+		logger.LogResponse(summary)
 	}
 
 	return summary, nil
@@ -70,8 +80,11 @@ func (a *Analyzer) AnalyzeAndSave(ctx context.Context, repo *db.Repository, from
 		return nil, fmt.Errorf("failed to create activity run: %w", err)
 	}
 
+	// Create logger for this run
+	logger := NewAnalysisLogger(a.db, run.ID)
+
 	// Store metadata as JSON
-	metadata := map[string]interface{}{
+	metadata := map[string]any{
 		"commit_count": len(commits),
 		"authors":      extractAuthors(commits),
 		"date_range": map[string]string{
@@ -88,7 +101,7 @@ func (a *Analyzer) AnalyzeAndSave(ctx context.Context, repo *db.Repository, from
 	if a.config.LLM.UseAgent {
 		// Use agent analyzer and capture cost tracking
 		var costTracker *CostTracker
-		summary, costTracker, err = a.analyzeWithAgent(ctx, repo, commits, branchActivity, previousSummary)
+		summary, costTracker, err = a.analyzeWithAgent(ctx, repo, commits, branchActivity, previousSummary, logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to analyze commits with agent: %w", err)
 		}
@@ -103,7 +116,7 @@ func (a *Analyzer) AnalyzeAndSave(ctx context.Context, repo *db.Repository, from
 		metadata["agent_estimated_tokens"] = costTracker.GetEstimatedTokens()
 	} else {
 		// Use simple LLM analyzer
-		summary, err = a.analyzeWithSimpleLLM(ctx, repo, commits, branchActivity, previousSummary)
+		summary, err = a.analyzeWithSimpleLLM(ctx, repo, commits, branchActivity, previousSummary, logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to analyze commits: %w", err)
 		}
@@ -202,6 +215,11 @@ func buildAnalysisPrompt(repo *db.Repository, commits []git.Commit, branchActivi
 	// Use configured prompt (or default)
 	sb.WriteString(cfg.GetPhase2Prompt())
 	sb.WriteString("\n")
+
+	// For external repositories, add contributor analysis instruction
+	if repo.External {
+		sb.WriteString("\n5. Contributors: Brief section about active contributors and their areas of focus.\n")
+	}
 
 	return sb.String()
 }

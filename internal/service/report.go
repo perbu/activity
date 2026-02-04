@@ -14,6 +14,7 @@ import (
 	"github.com/perbu/activity/internal/git"
 	"github.com/perbu/activity/internal/github"
 	"github.com/perbu/activity/internal/llm"
+	"github.com/perbu/activity/internal/progress"
 )
 
 // ReportService handles weekly report generation
@@ -47,12 +48,12 @@ type GenerateOptions struct {
 
 // GenerateResult contains the result of report generation
 type GenerateResult struct {
-	Generated  int
-	Skipped    int
-	NoCommits  int
-	RepoName   string
-	WeekLabel  string
-	ReportID   int64
+	Generated int
+	Skipped   int
+	NoCommits int
+	RepoName  string
+	WeekLabel string
+	ReportID  int64
 }
 
 // GenerateForWeek generates a report for a specific ISO week
@@ -101,7 +102,7 @@ func (s *ReportService) GenerateForWeek(ctx context.Context, repoName string, we
 		branchActivity = nil
 	}
 
-	slog.Info("Analyzing commits", "week", weekStr, "commits", len(commits), "branches", len(branchActivity))
+	progress.Log(ctx, "Analyzing commits", "week", weekStr, "commits", len(commits), "branches", len(branchActivity))
 
 	// Generate report
 	report, err := s.generateWeeklyReport(ctx, repo, year, week, commits, branchActivity, exists)
@@ -130,7 +131,7 @@ func (s *ReportService) GenerateSince(ctx context.Context, repoName string, sinc
 	}
 
 	weeksToGenerate := git.WeeksInRange(sinceTime, time.Now())
-	slog.Info("Generating reports", "count", len(weeksToGenerate), "repo", repoName)
+	progress.Log(ctx, "Generating reports", "count", len(weeksToGenerate), "repo", repoName)
 
 	// Fetch all remote branches
 	if err := s.fetchBranches(repo); err != nil {
@@ -184,7 +185,7 @@ func (s *ReportService) GenerateSince(ctx context.Context, repoName string, sinc
 			branchActivity = nil
 		}
 
-		slog.Info("Analyzing commits", "week", weekStr, "commits", len(commits), "branches", len(branchActivity))
+		progress.Log(ctx, "Analyzing commits", "week", weekStr, "commits", len(commits), "branches", len(branchActivity))
 
 		// Generate report using shared analyzer
 		report, err := s.generateWeeklyReportWithAnalyzer(ctx, llmAnalyzer, repo, year, wk, commits, branchActivity, exists)

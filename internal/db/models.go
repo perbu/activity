@@ -14,7 +14,11 @@ type Repository struct {
 	Branch      string
 	Active      bool
 	Private     bool           // Requires GitHub App authentication
+	External    bool           // External repo: include contributor analysis in summaries
 	Description sql.NullString // AI-generated description from README
+	ForgeType   sql.NullString // "github", "forgejo", or null
+	ForgeOwner  sql.NullString // e.g., "varnish" (for GitHub) or instance name (for Forgejo)
+	ForgeRepo   sql.NullString // e.g., "varnish-cache-plus"
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	LastRunAt   sql.NullTime
@@ -93,4 +97,15 @@ type Admin struct {
 	Email     string
 	CreatedAt time.Time
 	CreatedBy sql.NullString // Email of admin who created this admin
+}
+
+// AnalysisLog represents a log entry from LLM analysis (prompt, response, tool calls)
+type AnalysisLog struct {
+	ID            int64
+	ActivityRunID int64
+	LogType       string         // "prompt", "response", "tool_call", "tool_result"
+	ToolName      sql.NullString // Only for tool_call and tool_result types
+	Content       string
+	Sequence      int
+	CreatedAt     time.Time
 }

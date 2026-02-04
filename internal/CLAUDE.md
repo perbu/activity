@@ -53,6 +53,20 @@ Newsletter composition and delivery system. The `Composer` builds email content 
 repository summaries and formatting them using HTML templates. The `Sender` coordinates delivery via the email package,
 tracking which newsletters have been sent to which subscribers in the database.
 
+## progress
+
+Context-aware slog handler for real-time progress streaming. Wraps the standard slog handler and intercepts log messages
+tagged with `"progress", true`, forwarding them to a sink function attached to the context. Used to stream admin action
+progress to the browser via SSE.
+
+Key components:
+- `Handler` - slog.Handler wrapper that forwards tagged messages to context sink
+- `WithProgressSink(ctx, sink)` - attaches a sink function to context
+- `Log(ctx, msg, args...)` - convenience function that logs with progress tag
+
+Services use `progress.Log()` for user-facing messages (e.g., "Updating repository name=myrepo") while internal logs
+remain as regular `slog.Info()` calls.
+
 ## service
 
 Business logic layer extracted from former CLI commands. Provides reusable services for web handlers:
@@ -77,6 +91,14 @@ HTTP server for the Activity web application. Uses Go's standard library `http.S
 - `/admin/subscribers` - Newsletter subscriber management
 - `/admin/actions` - Manual triggers (update repos, generate reports, send newsletters)
 - `/admin/admins` - Admin user management
+
+**SSE streaming routes** (real-time progress feedback):
+- `POST /admin/update/stream` - Update repos with progress streaming
+- `POST /admin/generate/stream` - Generate reports with progress streaming
+- `POST /admin/send/stream` - Send newsletters with progress streaming
+
+These endpoints use Server-Sent Events to stream progress messages to the browser. The admin actions page uses JavaScript
+to consume these streams and display real-time output.
 
 Auth middleware extracts user email from configurable header (default: `oidc-email`) and checks admin status in database.
 In dev mode, auth is bypassed and a configurable dev user is used.

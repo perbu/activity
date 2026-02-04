@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/perbu/activity/internal/db"
+	"github.com/perbu/activity/internal/forge"
 	"github.com/perbu/activity/internal/git"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
@@ -78,21 +80,33 @@ func buildAgentPrompt(repo *db.Repository, commits []git.Commit, branchActivity 
 }
 
 // createAnalyzerAgent creates an ADK agent with tools for commit analysis
-func (a *Analyzer) createAnalyzerAgent(ctx context.Context, repoPath string, costTracker *CostTracker) (agent.Agent, error) {
+func (a *Analyzer) createAnalyzerAgent(ctx context.Context, repo *db.Repository, repoPath string, costTracker *CostTracker, f forge.Forge, since, until time.Time, logger *AnalysisLogger) (agent.Agent, error) {
 	// Get the Gemini model from the LLM client
 	geminiModel, err := a.llmClient.GetGeminiModel(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Gemini model: %w", err)
 	}
 
-	// Create tools
-	diffTool := NewGetCommitDiffTool(repoPath, costTracker)
-	diffFullTool := NewGetCommitDiffFullTool(repoPath, costTracker)
-	msgTool := NewGetFullCommitMessageTool(repoPath)
-	authorTool := NewGetAuthorStatsTool(repoPath)
+	// Create tools - base tools always included
+	diffTool := NewGetCommitDiffTool(repoPath, costTracker, logger)
+	diffFullTool := NewGetCommitDiffFullTool(repoPath, costTracker, logger)
+	msgTool := NewGetFullCommitMessageTool(repoPath, logger)
+	tools := []tool.Tool{diffTool, diffFullTool, msgTool}
 
-	// Get system prompt from config (with default fallback)
-	systemPrompt := a.config.GetAgentSystemPrompt()
+	// Only include author stats tool for external repositories
+	if repo.External {
+		authorTool := NewGetAuthorStatsTool(repoPath, logger)
+		tools = append(tools, authorTool)
+	}
+
+	// Add forge tool if configured
+	if f != nil {
+		forgeTool := NewGetPRReviewsTool(f, since, until)
+		tools = append(tools, forgeTool)
+	}
+
+	// Get system prompt based on repo type and forge availability
+	systemPrompt := a.config.GetAgentSystemPromptForRepo(repo.External, f != nil)
 
 	// Create agent configuration
 	agentConfig := llmagent.Config{
@@ -100,7 +114,7 @@ func (a *Analyzer) createAnalyzerAgent(ctx context.Context, repoPath string, cos
 		Description: "Analyzes git commits and provides summaries",
 		Model:       geminiModel,
 		Instruction: fmt.Sprintf(systemPrompt, a.config.LLM.MaxDiffFetches),
-		Tools:       []tool.Tool{diffTool, diffFullTool, msgTool, authorTool},
+		Tools:       tools,
 	}
 
 	// Create the agent
@@ -108,7 +122,7 @@ func (a *Analyzer) createAnalyzerAgent(ctx context.Context, repoPath string, cos
 }
 
 // analyzeWithAgent performs commit analysis using an ADK agent
-func (a *Analyzer) analyzeWithAgent(ctx context.Context, repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, previousSummary string) (string, *CostTracker, error) {
+func (a *Analyzer) analyzeWithAgent(ctx context.Context, repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, previousSummary string, logger *AnalysisLogger) (string, *CostTracker, error) {
 	// Create cost tracker
 	costTracker := NewCostTracker(
 		a.config.LLM.MaxDiffFetches,
@@ -119,14 +133,29 @@ func (a *Analyzer) analyzeWithAgent(ctx context.Context, repo *db.Repository, co
 	// Compute repo path from config
 	repoPath := db.RepoLocalPath(a.config.DataDir, repo.Name)
 
-	// Create agent
-	agt, err := a.createAnalyzerAgent(ctx, repoPath, costTracker)
+	// Determine date range from commits
+	var since, until time.Time
+	if len(commits) > 0 {
+		since = commits[len(commits)-1].Date
+		until = commits[0].Date
+	} else {
+		since = time.Now().AddDate(0, 0, -7)
+		until = time.Now()
+	}
+
+	// Create agent (forge parameter is nil for now - will be passed from caller when available)
+	agt, err := a.createAnalyzerAgent(ctx, repo, repoPath, costTracker, nil, since, until, logger)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to create agent: %w", err)
 	}
 
 	// Build user prompt
 	userPrompt := buildAgentPrompt(repo, commits, branchActivity, a.config.LLM.MaxMessageLength, previousSummary)
+
+	// Log prompt if logger available
+	if logger != nil {
+		logger.LogPrompt(userPrompt)
+	}
 
 	slog.Debug("agent starting analysis", "repo", repo.Name, "commits", len(commits))
 
@@ -172,6 +201,11 @@ func (a *Analyzer) analyzeWithAgent(ctx context.Context, repo *db.Repository, co
 
 	slog.Debug("agent analysis complete", "diffs_fetched", costTracker.GetDiffsFetched(), "tokens", costTracker.GetEstimatedTokens())
 	slog.Info("analysis complete", "repo", repo.Name, "commits", len(commits), "diffs", costTracker.GetDiffsFetched())
+
+	// Log response if logger available
+	if logger != nil {
+		logger.LogResponse(summary.String())
+	}
 
 	return summary.String(), costTracker, nil
 }

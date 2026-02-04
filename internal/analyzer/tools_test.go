@@ -6,7 +6,7 @@ import (
 
 func TestGetCommitDiffTool_Metadata(t *testing.T) {
 	ct := NewCostTracker(5, 10, 100000)
-	tool := NewGetCommitDiffTool("/fake/path", ct)
+	tool := NewGetCommitDiffTool("/fake/path", ct, nil)
 
 	if tool.Name() != "get_commit_diff" {
 		t.Errorf("Name() = %q, want %q", tool.Name(), "get_commit_diff")
@@ -37,7 +37,7 @@ func TestGetCommitDiffTool_Metadata(t *testing.T) {
 
 func TestGetCommitDiffTool_RunInvalidArgs(t *testing.T) {
 	ct := NewCostTracker(5, 10, 100000)
-	tool := NewGetCommitDiffTool("/fake/path", ct)
+	tool := NewGetCommitDiffTool("/fake/path", ct, nil)
 
 	tests := []struct {
 		name string
@@ -72,7 +72,7 @@ func TestGetCommitDiffTool_RunInvalidArgs(t *testing.T) {
 func TestGetCommitDiffTool_RunDeniedByTracker(t *testing.T) {
 	// Create a tracker that's already at its limit
 	ct := NewCostTracker(0, 10, 100000) // 0 max fetches
-	tool := NewGetCommitDiffTool("/fake/path", ct)
+	tool := NewGetCommitDiffTool("/fake/path", ct, nil)
 
 	result, err := tool.Run(nil, map[string]any{
 		"commit_sha": "abc123",
@@ -92,7 +92,7 @@ func TestGetCommitDiffTool_RunDeniedByTracker(t *testing.T) {
 
 func TestGetCommitDiffFullTool_Metadata(t *testing.T) {
 	ct := NewCostTracker(5, 10, 100000)
-	tool := NewGetCommitDiffFullTool("/fake/path", ct)
+	tool := NewGetCommitDiffFullTool("/fake/path", ct, nil)
 
 	if tool.Name() != "get_commit_diff_full" {
 		t.Errorf("Name() = %q, want %q", tool.Name(), "get_commit_diff_full")
@@ -117,7 +117,7 @@ func TestGetCommitDiffFullTool_Metadata(t *testing.T) {
 
 func TestGetCommitDiffFullTool_RunInvalidArgs(t *testing.T) {
 	ct := NewCostTracker(5, 10, 100000)
-	tool := NewGetCommitDiffFullTool("/fake/path", ct)
+	tool := NewGetCommitDiffFullTool("/fake/path", ct, nil)
 
 	tests := []struct {
 		name string
@@ -146,7 +146,7 @@ func TestGetCommitDiffFullTool_RunInvalidArgs(t *testing.T) {
 }
 
 func TestGetFullCommitMessageTool_Metadata(t *testing.T) {
-	tool := NewGetFullCommitMessageTool("/fake/path")
+	tool := NewGetFullCommitMessageTool("/fake/path", nil)
 
 	if tool.Name() != "get_full_commit_message" {
 		t.Errorf("Name() = %q, want %q", tool.Name(), "get_full_commit_message")
@@ -173,7 +173,7 @@ func TestGetFullCommitMessageTool_Metadata(t *testing.T) {
 }
 
 func TestGetFullCommitMessageTool_RunInvalidArgs(t *testing.T) {
-	tool := NewGetFullCommitMessageTool("/fake/path")
+	tool := NewGetFullCommitMessageTool("/fake/path", nil)
 
 	tests := []struct {
 		name string
@@ -202,7 +202,7 @@ func TestGetFullCommitMessageTool_RunInvalidArgs(t *testing.T) {
 }
 
 func TestGetAuthorStatsTool_Metadata(t *testing.T) {
-	tool := NewGetAuthorStatsTool("/fake/path")
+	tool := NewGetAuthorStatsTool("/fake/path", nil)
 
 	if tool.Name() != "get_author_stats" {
 		t.Errorf("Name() = %q, want %q", tool.Name(), "get_author_stats")
@@ -229,7 +229,7 @@ func TestGetAuthorStatsTool_Metadata(t *testing.T) {
 }
 
 func TestGetAuthorStatsTool_RunInvalidArgs(t *testing.T) {
-	tool := NewGetAuthorStatsTool("/fake/path")
+	tool := NewGetAuthorStatsTool("/fake/path", nil)
 
 	tests := []struct {
 		name string
@@ -259,7 +259,7 @@ func TestGetAuthorStatsTool_RunInvalidArgs(t *testing.T) {
 
 func TestToolJSONArgs(t *testing.T) {
 	ct := NewCostTracker(0, 10, 100000) // 0 max to ensure we get the "denied" error
-	tool := NewGetCommitDiffTool("/fake/path", ct)
+	tool := NewGetCommitDiffTool("/fake/path", ct, nil)
 
 	// Test with JSON string args
 	jsonArgs := `{"commit_sha": "abc123", "reason": "test reason"}`

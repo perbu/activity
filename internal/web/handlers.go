@@ -200,13 +200,34 @@ func (s *Server) handleReportView(w http.ResponseWriter, r *http.Request) {
 
 	detail := toReportDetail(report, repo.Name)
 
+	viewData := ReportViewData{
+		Report: detail,
+	}
+
+	// If report has a source run, fetch analysis logs
+	if report.SourceRunID.Valid {
+		viewData.SourceRunID = report.SourceRunID.Int64
+		logs, err := s.db.GetAnalysisLogsByActivityRun(report.SourceRunID.Int64)
+		if err == nil {
+			viewData.AnalysisLogs = make([]AnalysisLogView, len(logs))
+			for i, log := range logs {
+				viewData.AnalysisLogs[i] = AnalysisLogView{
+					ID:        log.ID,
+					LogType:   log.LogType,
+					ToolName:  log.ToolName.String,
+					Content:   log.Content,
+					Sequence:  log.Sequence,
+					CreatedAt: log.CreatedAt.Format("15:04:05"),
+				}
+			}
+		}
+	}
+
 	data := PageData{
 		Title:     repo.Name + " " + detail.WeekLabel,
 		ActiveNav: "",
 		User:      GetUser(r),
-		Content: ReportViewData{
-			Report: detail,
-		},
+		Content:   viewData,
 	}
 
 	s.render(w, s.templates.report, data)

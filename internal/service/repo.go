@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/perbu/activity/internal/git"
 	"github.com/perbu/activity/internal/github"
 	"github.com/perbu/activity/internal/llm"
+	"github.com/perbu/activity/internal/progress"
 )
 
 // RepoService handles repository management operations
@@ -79,10 +81,25 @@ func (s *RepoService) cloneRepo(repo *db.Repository) error {
 
 // AddOptions contains options for adding a repository
 type AddOptions struct {
-	Name    string
-	URL     string
-	Branch  string
-	Private bool
+	Name       string
+	URL        string
+	Branch     string
+	Private    bool
+	External   bool
+	ForgeType  string // "github", "forgejo", or ""
+	ForgeOwner string // e.g., "varnish" (for GitHub) or instance name (for Forgejo)
+	ForgeRepo  string // e.g., "varnish-cache-plus"
+}
+
+// UpdateOptions contains options for updating repository settings
+type UpdateOptions struct {
+	URL        string
+	Branch     string
+	Private    bool
+	External   bool
+	ForgeType  string // "github", "forgejo", or ""
+	ForgeOwner string
+	ForgeRepo  string
 }
 
 // Add creates a new tracked repository
@@ -138,8 +155,16 @@ func (s *RepoService) Add(ctx context.Context, opts AddOptions) (*db.Repository,
 		description = sql.NullString{String: desc, Valid: true}
 	}
 
+	// Convert forge fields to sql.NullString
+	var forgeType, forgeOwner, forgeRepo sql.NullString
+	if opts.ForgeType != "" {
+		forgeType = sql.NullString{String: opts.ForgeType, Valid: true}
+		forgeOwner = sql.NullString{String: opts.ForgeOwner, Valid: opts.ForgeOwner != ""}
+		forgeRepo = sql.NullString{String: opts.ForgeRepo, Valid: opts.ForgeRepo != ""}
+	}
+
 	// Create database entry
-	repo, err := s.db.CreateRepository(opts.Name, opts.URL, opts.Branch, opts.Private, description)
+	repo, err := s.db.CreateRepository(opts.Name, opts.URL, opts.Branch, opts.Private, opts.External, description, forgeType, forgeOwner, forgeRepo)
 	if err != nil {
 		// Clean up cloned directory on failure
 		os.RemoveAll(localPath)
@@ -238,12 +263,58 @@ func (s *RepoService) SetURL(name, newURL string) error {
 	return nil
 }
 
+// UpdateSettings updates repository settings (branch, private, external, and optionally URL)
+func (s *RepoService) UpdateSettings(name string, opts UpdateOptions) error {
+	repo, err := s.db.GetRepositoryByName(name)
+	if err != nil {
+		return fmt.Errorf("repository not found: %s", name)
+	}
+
+	// If URL changed, update git remote
+	if opts.URL != "" && opts.URL != repo.URL {
+		if err := s.SetURL(name, opts.URL); err != nil {
+			return err
+		}
+		// Re-fetch repo since SetURL updated it
+		repo, err = s.db.GetRepositoryByName(name)
+		if err != nil {
+			return fmt.Errorf("failed to re-fetch repository: %w", err)
+		}
+	}
+
+	// Update fields
+	if opts.Branch != "" {
+		repo.Branch = opts.Branch
+	}
+	repo.Private = opts.Private
+	repo.External = opts.External
+
+	// Update forge fields
+	if opts.ForgeType != "" {
+		repo.ForgeType = sql.NullString{String: opts.ForgeType, Valid: true}
+		repo.ForgeOwner = sql.NullString{String: opts.ForgeOwner, Valid: opts.ForgeOwner != ""}
+		repo.ForgeRepo = sql.NullString{String: opts.ForgeRepo, Valid: opts.ForgeRepo != ""}
+	} else {
+		// Clear forge fields if type is empty
+		repo.ForgeType = sql.NullString{}
+		repo.ForgeOwner = sql.NullString{}
+		repo.ForgeRepo = sql.NullString{}
+	}
+
+	if err := s.db.UpdateRepository(repo); err != nil {
+		return fmt.Errorf("failed to update repository: %w", err)
+	}
+
+	slog.Info("Repository settings updated", "name", name, "branch", repo.Branch, "private", repo.Private, "external", repo.External, "forge", opts.ForgeType)
+	return nil
+}
+
 // UpdateResult contains the result of updating a repository
 type UpdateResult struct {
-	Name          string
-	BeforeSHA     string
-	AfterSHA      string
-	CommitCount   int
+	Name            string
+	BeforeSHA       string
+	AfterSHA        string
+	CommitCount     int
 	AlreadyUpToDate bool
 }
 
@@ -261,7 +332,7 @@ func (s *RepoService) Update(ctx context.Context, name string) (*UpdateResult, e
 		return nil, fmt.Errorf("failed to ensure repo ready: %w", err)
 	}
 
-	slog.Info("Updating repository", "name", name)
+	progress.Log(ctx, "Updating repository", "name", name)
 
 	// Get current SHA for the tracked branch before fetch
 	beforeSHA, err := git.GetBranchSHA(repoPath, repo.Branch)
@@ -307,14 +378,14 @@ func (s *RepoService) Update(ctx context.Context, name string) (*UpdateResult, e
 
 	if beforeSHA == afterSHA {
 		result.AlreadyUpToDate = true
-		slog.Info("Repository already up to date", "name", name)
+		progress.Log(ctx, "Repository up to date", "name", name)
 	} else {
 		commits, err := git.GetCommitRange(repoPath, beforeSHA, afterSHA)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get commit range: %w", err)
 		}
 		result.CommitCount = len(commits)
-		slog.Info("Repository updated", "name", name, "commits", len(commits))
+		progress.Log(ctx, "Repository updated", "name", name, "commits", len(commits))
 	}
 
 	return result, nil
@@ -407,4 +478,28 @@ func findAndReadREADME(repoPath string) (string, error) {
 	}
 
 	return "", fmt.Errorf("no README file found")
+}
+
+// ParseForgeURL extracts forge information from a repository URL
+// Returns forgeType ("github" or ""), owner, and repo name
+// Only GitHub is auto-detected; Forgejo instances need explicit configuration
+func ParseForgeURL(repoURL string) (forgeType, owner, repo string) {
+	parsed, err := url.Parse(repoURL)
+	if err != nil {
+		return "", "", ""
+	}
+
+	host := strings.ToLower(parsed.Host)
+
+	// Only auto-detect GitHub
+	if host == "github.com" || strings.HasSuffix(host, ".github.com") {
+		path := strings.TrimPrefix(parsed.Path, "/")
+		path = strings.TrimSuffix(path, ".git")
+		parts := strings.SplitN(path, "/", 2)
+		if len(parts) == 2 {
+			return "github", parts[0], parts[1]
+		}
+	}
+
+	return "", "", ""
 }
