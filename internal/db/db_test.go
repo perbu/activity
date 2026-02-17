@@ -25,9 +25,12 @@ func setupTestDB(t *testing.T) (*DB, func()) {
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
 		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(60*time.Second),
+			wait.ForAll(
+				wait.ForLog("database system is ready to accept connections").
+					WithOccurrence(2).
+					WithStartupTimeout(60*time.Second),
+				wait.ForListeningPort("5432/tcp"),
+			),
 		),
 	)
 	if err != nil {
