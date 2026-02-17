@@ -91,11 +91,12 @@ type AddOptions struct {
 
 // UpdateOptions contains options for updating repository settings
 type UpdateOptions struct {
-	URL       string
-	Branch    string
-	Private   bool
-	External  bool
-	ForgeType string // "github", "forgejo", or ""
+	URL         string
+	Branch      string
+	Private     bool
+	External    bool
+	ForgeType   string // "github", "forgejo", or ""
+	Description string // manual override; empty string clears it
 }
 
 // Add creates a new tracked repository
@@ -285,6 +286,7 @@ func (s *RepoService) UpdateSettings(name string, opts UpdateOptions) error {
 	}
 	repo.Private = opts.Private
 	repo.External = opts.External
+	repo.Description = sql.NullString{String: opts.Description, Valid: opts.Description != ""}
 
 	// Update forge fields — derive owner/repo from URL
 	if opts.ForgeType != "" {

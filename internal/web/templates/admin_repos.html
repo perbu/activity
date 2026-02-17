@@ -138,6 +138,10 @@
                             <input type="text" name="branch" value="{{.Branch}}" class="ar-input ar-input--narrow">
                         </div>
                     </div>
+                    <div class="ar-field" style="margin-top: 0.75rem;">
+                        <label class="ar-label">Description</label>
+                        <textarea name="description" class="ar-input ar-input--wide" rows="2" placeholder="AI-generated on add; edit to override">{{.Description}}</textarea>
+                    </div>
                     <div class="ar-checks ar-checks--row">
                         <label class="ar-check">
                             <input type="checkbox" name="private" {{if .Private}}checked{{end}}>
@@ -347,6 +351,11 @@
     color: var(--text-primary);
     width: 200px;
     transition: border-color 0.12s ease;
+}
+
+textarea.ar-input {
+    resize: vertical;
+    min-height: 2.5rem;
 }
 
 .ar-input:focus,

@@ -208,6 +208,7 @@ func (s *Server) handleAdminRepoUpdate(w http.ResponseWriter, r *http.Request) {
 	private := r.FormValue("private") == "on"
 	external := r.FormValue("external") == "on"
 	forgeType := r.FormValue("forge_type")
+	description := r.FormValue("description")
 
 	if name == "" {
 		http.Error(w, "Repository name is required", http.StatusBadRequest)
@@ -215,11 +216,12 @@ func (s *Server) handleAdminRepoUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.services.Repo.UpdateSettings(name, service.UpdateOptions{
-		URL:       url,
-		Branch:    branch,
-		Private:   private,
-		External:  external,
-		ForgeType: forgeType,
+		URL:         url,
+		Branch:      branch,
+		Private:     private,
+		External:    external,
+		ForgeType:   forgeType,
+		Description: description,
 	}); err != nil {
 		slog.Error("Failed to update repository settings", "name", name, "error", err)
 		http.Error(w, "Failed to update repository: "+err.Error(), http.StatusInternalServerError)
