@@ -67,6 +67,121 @@ Available tags:
 - `1.0.0` - Specific version (from v1.0.0 tag)
 - `1.0` - Major.minor version
 
+## Kubernetes
+
+The container image works on Kubernetes without modification. The app exposes `/healthz` for probes and handles `SIGTERM` gracefully (10s drain).
+
+Key resources needed:
+- **Deployment** — runs the container, references the ConfigMap, Secret, and PVC
+- **Service** — exposes port 8080 within the cluster
+- **PersistentVolumeClaim** — stores cloned git repositories (`data-dir`)
+- **ConfigMap** — holds `config.yaml`
+- **Secret** — holds `GOOGLE_API_KEY` (and optionally `GITHUB_APP_PRIVATE_KEY`, `SENDGRID_API_KEY`)
+
+Example manifests:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: activity-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: activity-config
+data:
+  config.yaml: |
+    llm:
+      provider: gemini
+      model: gemini-3.0-flash
+      api_key_env: GOOGLE_API_KEY
+      use_agent: true
+      max_diff_fetches: 5
+    web:
+      auth_header: oidc-email
+      seed_admin: admin@example.com
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: activity-secrets
+stringData:
+  GOOGLE_API_KEY: "your-api-key"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: activity
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: activity
+  template:
+    metadata:
+      labels:
+        app: activity
+    spec:
+      containers:
+        - name: activity
+          image: ghcr.io/perbu/activity:latest
+          args:
+            - --config
+            - /etc/activity/config.yaml
+            - --data-dir
+            - /data
+            - --host
+            - "0.0.0.0"
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: activity-secrets
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /etc/activity
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: activity-data
+        - name: config
+          configMap:
+            name: activity-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: activity
+spec:
+  selector:
+    app: activity
+  ports:
+    - port: 8080
+      targetPort: 8080
+```
+
+> **Note:** Only one replica can run at a time since the PVC is `ReadWriteOnce` and git clones in the data directory aren't safe for concurrent access.
+
 ## Running
 
 ```bash

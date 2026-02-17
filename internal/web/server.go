@@ -1,9 +1,14 @@
 package web
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/perbu/activity/internal/config"
 	"github.com/perbu/activity/internal/db"
@@ -83,6 +88,9 @@ func NewServer(database *db.DB, services *service.Services, cfg *config.Config, 
 
 // registerRoutes registers all HTTP routes
 func (s *Server) registerRoutes() {
+	// Health check endpoint (no auth required)
+	s.mux.HandleFunc("GET /healthz", s.handleHealthz)
+
 	// Serve static files from embedded filesystem
 	s.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(StaticFS()))))
 
@@ -115,15 +123,52 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /admin/admins/remove", RequireAdmin(s.handleAdminAdminRemove))
 }
 
-// Start starts the HTTP server
+// Start starts the HTTP server with graceful shutdown on SIGINT/SIGTERM.
 func (s *Server) Start() error {
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
-	// Wrap the mux with auth middleware to populate user context on all requests
 	handler := s.auth.Middleware(s.mux)
-	return http.ListenAndServe(addr, handler)
+
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: handler,
+	}
+
+	// Listen for shutdown signals
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// Start server in a goroutine
+	errCh := make(chan error, 1)
+	go func() {
+		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+		close(errCh)
+	}()
+
+	// Wait for signal or server error
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		slog.Info("Shutting down server")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("server shutdown: %w", err)
+		}
+		slog.Info("Server stopped")
+		return nil
+	}
 }
 
 // Address returns the server address
 func (s *Server) Address() string {
 	return fmt.Sprintf("http://%s:%d", s.host, s.port)
+}
+
+func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintln(w, "ok")
 }
