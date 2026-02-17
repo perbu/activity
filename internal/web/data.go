@@ -57,8 +57,6 @@ type RepoSummary struct {
 	External    bool   // External repo: include contributor analysis in summaries
 	Description string // AI-generated description from README
 	ForgeType   string // "github", "forgejo", or ""
-	ForgeOwner  string // e.g., "varnish" (GitHub) or instance name (Forgejo)
-	ForgeRepo   string // e.g., "varnish-cache-plus" or "owner/repo"
 	ReportCount int
 	LastReport  string         // formatted date or "No reports"
 	Sparkline   []SparklineBar // commit activity for last 8 weeks (oldest to newest)

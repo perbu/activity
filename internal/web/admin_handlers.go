@@ -56,8 +56,6 @@ func (s *Server) handleAdminRepos(w http.ResponseWriter, r *http.Request) {
 			External:    repo.External,
 			Description: repo.Description.String,
 			ForgeType:   repo.ForgeType.String,
-			ForgeOwner:  repo.ForgeOwner.String,
-			ForgeRepo:   repo.ForgeRepo.String,
 			ReportCount: len(reports),
 			LastReport:  "No reports",
 		}
@@ -92,8 +90,6 @@ func (s *Server) handleAdminRepoAdd(w http.ResponseWriter, r *http.Request) {
 	private := r.FormValue("private") == "on"
 	external := r.FormValue("external") == "on"
 	forgeType := r.FormValue("forge_type")
-	forgeOwner := r.FormValue("forge_owner")
-	forgeRepo := r.FormValue("forge_repo")
 
 	if name == "" || url == "" {
 		http.Error(w, "Name and URL are required", http.StatusBadRequest)
@@ -104,14 +100,12 @@ func (s *Server) handleAdminRepoAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err := s.services.Repo.Add(context.Background(), service.AddOptions{
-		Name:       name,
-		URL:        url,
-		Branch:     branch,
-		Private:    private,
-		External:   external,
-		ForgeType:  forgeType,
-		ForgeOwner: forgeOwner,
-		ForgeRepo:  forgeRepo,
+		Name:      name,
+		URL:       url,
+		Branch:    branch,
+		Private:   private,
+		External:  external,
+		ForgeType: forgeType,
 	})
 	if err != nil {
 		slog.Error("Failed to add repository", "name", name, "error", err)
@@ -214,8 +208,6 @@ func (s *Server) handleAdminRepoUpdate(w http.ResponseWriter, r *http.Request) {
 	private := r.FormValue("private") == "on"
 	external := r.FormValue("external") == "on"
 	forgeType := r.FormValue("forge_type")
-	forgeOwner := r.FormValue("forge_owner")
-	forgeRepo := r.FormValue("forge_repo")
 
 	if name == "" {
 		http.Error(w, "Repository name is required", http.StatusBadRequest)
@@ -223,13 +215,11 @@ func (s *Server) handleAdminRepoUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.services.Repo.UpdateSettings(name, service.UpdateOptions{
-		URL:        url,
-		Branch:     branch,
-		Private:    private,
-		External:   external,
-		ForgeType:  forgeType,
-		ForgeOwner: forgeOwner,
-		ForgeRepo:  forgeRepo,
+		URL:       url,
+		Branch:    branch,
+		Private:   private,
+		External:  external,
+		ForgeType: forgeType,
 	}); err != nil {
 		slog.Error("Failed to update repository settings", "name", name, "error", err)
 		http.Error(w, "Failed to update repository: "+err.Error(), http.StatusInternalServerError)

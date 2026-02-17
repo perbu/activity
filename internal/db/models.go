@@ -17,8 +17,8 @@ type Repository struct {
 	External    bool           // External repo: include contributor analysis in summaries
 	Description sql.NullString // AI-generated description from README
 	ForgeType   sql.NullString // "github", "forgejo", or null
-	ForgeOwner  sql.NullString // e.g., "varnish" (for GitHub) or instance name (for Forgejo)
-	ForgeRepo   sql.NullString // e.g., "varnish-cache-plus"
+	ForgeOwner  sql.NullString // Repository owner, derived from clone URL (e.g., "varnish")
+	ForgeRepo   sql.NullString // Repository name, derived from clone URL (e.g., "varnish-cache-plus")
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	LastRunAt   sql.NullTime

@@ -2,9 +2,11 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -28,19 +30,24 @@ type ForgejoConfig struct {
 	TokenEnv string `yaml:"token_env"` // Env var name for personal access token (optional)
 }
 
-// GetForgejoConfig returns the ForgejoConfig for the given instance name, or nil if not found
-func (c *Config) GetForgejoConfig(name string) *ForgejoConfig {
+// GetForgejoConfigByHost returns the ForgejoConfig whose base_url matches the given host, or nil if not found
+func (c *Config) GetForgejoConfigByHost(host string) *ForgejoConfig {
+	host = strings.ToLower(host)
 	for i := range c.Forgejo {
-		if c.Forgejo[i].Name == name {
+		parsed, err := url.Parse(c.Forgejo[i].BaseURL)
+		if err != nil {
+			continue
+		}
+		if strings.ToLower(parsed.Host) == host {
 			return &c.Forgejo[i]
 		}
 	}
 	return nil
 }
 
-// GetForgejoToken returns the token for the given Forgejo instance from its configured env var
-func (c *Config) GetForgejoToken(name string) string {
-	cfg := c.GetForgejoConfig(name)
+// GetForgejoTokenByHost returns the token for the Forgejo instance matching the given host
+func (c *Config) GetForgejoTokenByHost(host string) string {
+	cfg := c.GetForgejoConfigByHost(host)
 	if cfg == nil || cfg.TokenEnv == "" {
 		return ""
 	}

@@ -81,25 +81,21 @@ func (s *RepoService) cloneRepo(repo *db.Repository) error {
 
 // AddOptions contains options for adding a repository
 type AddOptions struct {
-	Name       string
-	URL        string
-	Branch     string
-	Private    bool
-	External   bool
-	ForgeType  string // "github", "forgejo", or ""
-	ForgeOwner string // e.g., "varnish" (for GitHub) or instance name (for Forgejo)
-	ForgeRepo  string // e.g., "varnish-cache-plus"
+	Name      string
+	URL       string
+	Branch    string
+	Private   bool
+	External  bool
+	ForgeType string // "github", "forgejo", or "" (auto-detected from URL for github)
 }
 
 // UpdateOptions contains options for updating repository settings
 type UpdateOptions struct {
-	URL        string
-	Branch     string
-	Private    bool
-	External   bool
-	ForgeType  string // "github", "forgejo", or ""
-	ForgeOwner string
-	ForgeRepo  string
+	URL       string
+	Branch    string
+	Private   bool
+	External  bool
+	ForgeType string // "github", "forgejo", or ""
 }
 
 // Add creates a new tracked repository
@@ -155,12 +151,13 @@ func (s *RepoService) Add(ctx context.Context, opts AddOptions) (*db.Repository,
 		description = sql.NullString{String: desc, Valid: true}
 	}
 
-	// Convert forge fields to sql.NullString
+	// Derive forge owner/repo from URL
 	var forgeType, forgeOwner, forgeRepo sql.NullString
 	if opts.ForgeType != "" {
+		_, owner, repoName := ParseForgeURL(opts.URL)
 		forgeType = sql.NullString{String: opts.ForgeType, Valid: true}
-		forgeOwner = sql.NullString{String: opts.ForgeOwner, Valid: opts.ForgeOwner != ""}
-		forgeRepo = sql.NullString{String: opts.ForgeRepo, Valid: opts.ForgeRepo != ""}
+		forgeOwner = sql.NullString{String: owner, Valid: owner != ""}
+		forgeRepo = sql.NullString{String: repoName, Valid: repoName != ""}
 	}
 
 	// Create database entry
@@ -289,11 +286,16 @@ func (s *RepoService) UpdateSettings(name string, opts UpdateOptions) error {
 	repo.Private = opts.Private
 	repo.External = opts.External
 
-	// Update forge fields
+	// Update forge fields — derive owner/repo from URL
 	if opts.ForgeType != "" {
+		repoURL := opts.URL
+		if repoURL == "" {
+			repoURL = repo.URL
+		}
+		_, owner, repoName := ParseForgeURL(repoURL)
 		repo.ForgeType = sql.NullString{String: opts.ForgeType, Valid: true}
-		repo.ForgeOwner = sql.NullString{String: opts.ForgeOwner, Valid: opts.ForgeOwner != ""}
-		repo.ForgeRepo = sql.NullString{String: opts.ForgeRepo, Valid: opts.ForgeRepo != ""}
+		repo.ForgeOwner = sql.NullString{String: owner, Valid: owner != ""}
+		repo.ForgeRepo = sql.NullString{String: repoName, Valid: repoName != ""}
 	} else {
 		// Clear forge fields if type is empty
 		repo.ForgeType = sql.NullString{}
@@ -480,26 +482,32 @@ func findAndReadREADME(repoPath string) (string, error) {
 	return "", fmt.Errorf("no README file found")
 }
 
-// ParseForgeURL extracts forge information from a repository URL
-// Returns forgeType ("github" or ""), owner, and repo name
-// Only GitHub is auto-detected; Forgejo instances need explicit configuration
+// ParseForgeURL extracts owner and repo from any HTTPS git clone URL.
+// It also auto-detects GitHub from the host. Returns forgeType ("github" or ""),
+// owner, and repo name. For non-GitHub URLs, forgeType is empty but owner/repo
+// are still extracted if the path has the right shape.
 func ParseForgeURL(repoURL string) (forgeType, owner, repo string) {
 	parsed, err := url.Parse(repoURL)
 	if err != nil {
 		return "", "", ""
 	}
 
-	host := strings.ToLower(parsed.Host)
-
-	// Only auto-detect GitHub
-	if host == "github.com" || strings.HasSuffix(host, ".github.com") {
-		path := strings.TrimPrefix(parsed.Path, "/")
-		path = strings.TrimSuffix(path, ".git")
-		parts := strings.SplitN(path, "/", 2)
-		if len(parts) == 2 {
-			return "github", parts[0], parts[1]
-		}
+	// Extract owner/repo from path
+	path := strings.TrimPrefix(parsed.Path, "/")
+	path = strings.TrimSuffix(path, ".git")
+	parts := strings.SplitN(path, "/", 3)
+	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", ""
 	}
 
-	return "", "", ""
+	owner = parts[0]
+	repo = parts[1]
+
+	// Auto-detect GitHub from host
+	host := strings.ToLower(parsed.Host)
+	if host == "github.com" || strings.HasSuffix(host, ".github.com") {
+		return "github", owner, repo
+	}
+
+	return "", owner, repo
 }
