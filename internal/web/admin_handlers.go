@@ -390,20 +390,9 @@ func (s *Server) handleAdminSendNewsletter(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	sinceStr := r.FormValue("since")
-	if sinceStr == "" {
-		sinceStr = "7d"
-	}
-
-	since, err := service.ParseSinceDuration(sinceStr)
-	if err != nil {
-		http.Error(w, "Invalid duration: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
 	dryRun := r.FormValue("dry_run") == "on"
 
-	result, err := s.services.Newsletter.Send(context.Background(), since, dryRun, os.Stdout)
+	result, err := s.services.Newsletter.SendLastWeek(context.Background(), dryRun, os.Stdout)
 	if err != nil {
 		slog.Error("Failed to send newsletters", "error", err)
 		http.Error(w, "Failed to send newsletters: "+err.Error(), http.StatusInternalServerError)
@@ -577,13 +566,27 @@ func (s *Server) handleAdminGenerateReportStream(w http.ResponseWriter, r *http.
 		return
 	}
 
+	if err := r.ParseForm(); err != nil {
+		fmt.Fprintf(w, "event: error\ndata: Invalid form data\n\n")
+		flusher.Flush()
+		return
+	}
+
+	weeksBack := 1
+	if wb := r.FormValue("weeks_back"); wb != "" {
+		if n, err := strconv.Atoi(wb); err == nil && n >= 1 && n <= 4 {
+			weeksBack = n
+		}
+	}
+	force := r.FormValue("force") == "on"
+
 	sink := func(msg string) {
 		fmt.Fprintf(w, "data: %s\n\n", msg)
 		flusher.Flush()
 	}
 
 	ctx := progress.WithProgressSink(r.Context(), sink)
-	results, err := s.services.Report.GenerateLastWeek(ctx, false)
+	results, err := s.services.Report.GenerateLastNWeeks(ctx, weeksBack, force)
 
 	if err != nil {
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
@@ -616,18 +619,6 @@ func (s *Server) handleAdminSendNewsletterStream(w http.ResponseWriter, r *http.
 		return
 	}
 
-	sinceStr := r.FormValue("since")
-	if sinceStr == "" {
-		sinceStr = "7d"
-	}
-
-	since, err := service.ParseSinceDuration(sinceStr)
-	if err != nil {
-		fmt.Fprintf(w, "event: error\ndata: Invalid duration: %s\n\n", err.Error())
-		flusher.Flush()
-		return
-	}
-
 	dryRun := r.FormValue("dry_run") == "on"
 
 	sink := func(msg string) {
@@ -636,7 +627,7 @@ func (s *Server) handleAdminSendNewsletterStream(w http.ResponseWriter, r *http.
 	}
 
 	ctx := progress.WithProgressSink(r.Context(), sink)
-	result, err := s.services.Newsletter.Send(ctx, since, dryRun, os.Stdout)
+	result, err := s.services.Newsletter.SendLastWeek(ctx, dryRun, os.Stdout)
 
 	if err != nil {
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())

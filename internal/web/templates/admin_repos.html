@@ -1,428 +1,742 @@
 {{define "content"}}
 <div class="admin-repos">
-    <div class="page-header">
-        <h1>Manage Repositories</h1>
-        <a href="/admin" class="back-link">&larr; Back to Admin</a>
+    <div class="ar-header">
+        <div>
+            <a href="/admin" class="ar-back">&larr; admin</a>
+            <h1 class="ar-title">Repositories</h1>
+        </div>
+        <button type="button" class="ar-btn ar-btn--primary" onclick="document.getElementById('add-section').toggleAttribute('hidden')">
+            + Add Repository
+        </button>
     </div>
 
-    <div class="add-form-section">
-        <h2>Add Repository</h2>
-        <form action="/admin/repos/add" method="POST" class="add-form">
-            <div class="form-row">
-                <label for="name">Name</label>
-                <input type="text" id="name" name="name" required placeholder="my-repo">
-            </div>
-            <div class="form-row">
-                <label for="url">URL</label>
-                <input type="url" id="url" name="url" required placeholder="https://github.com/user/repo">
-            </div>
-            <div class="form-row">
-                <label for="branch">Branch</label>
-                <input type="text" id="branch" name="branch" value="main" placeholder="main">
-            </div>
-            <div class="form-row checkbox-row">
-                <label>
-                    <input type="checkbox" name="private">
-                    Private (requires GitHub App)
-                </label>
-            </div>
-            <div class="form-row checkbox-row">
-                <label>
-                    <input type="checkbox" name="external">
-                    External (include contributor analysis)
-                </label>
-            </div>
-            <div class="form-row">
-                <label for="forge_type">Forge</label>
-                <select id="forge_type" name="forge_type" onchange="toggleForgeDetails(this, 'add')">
-                    <option value="">None</option>
-                    <option value="github">GitHub</option>
-                    <option value="forgejo">Forgejo</option>
-                </select>
-            </div>
-            <div class="forge-details" id="forge-details-add" style="display:none">
-                <div class="form-row">
-                    <label for="forge_owner">Owner/Instance</label>
-                    <input type="text" id="forge_owner" name="forge_owner" placeholder="varnish or codeberg">
-                </div>
-                <div class="form-row">
-                    <label for="forge_repo">Repo</label>
-                    <input type="text" id="forge_repo" name="forge_repo" placeholder="varnish-cache-plus or owner/repo">
+    <!-- Add Repository -->
+    <div id="add-section" class="ar-panel" hidden>
+        <form action="/admin/repos/add" method="POST" class="ar-add-form">
+            <div class="ar-form-section">
+                <div class="ar-form-section__label">Repository</div>
+                <div class="ar-form-grid">
+                    <div class="ar-field">
+                        <label for="name" class="ar-label">Name</label>
+                        <input type="text" id="name" name="name" required placeholder="my-repo" class="ar-input">
+                        <span class="ar-hint">Short identifier, used in URLs</span>
+                    </div>
+                    <div class="ar-field">
+                        <label for="url" class="ar-label">Clone URL</label>
+                        <input type="url" id="url" name="url" required placeholder="https://github.com/user/repo" class="ar-input ar-input--wide">
+                        <span class="ar-hint">HTTPS URL used to clone the repo</span>
+                    </div>
+                    <div class="ar-field">
+                        <label for="branch" class="ar-label">Branch</label>
+                        <input type="text" id="branch" name="branch" value="main" placeholder="main" class="ar-input ar-input--narrow">
+                    </div>
                 </div>
             </div>
-            <button type="submit" class="btn">Add Repository</button>
+
+            <div class="ar-form-section">
+                <div class="ar-form-section__label">Properties</div>
+                <div class="ar-checks">
+                    <label class="ar-check">
+                        <input type="checkbox" name="private">
+                        <span class="ar-check__box"></span>
+                        <span>
+                            <span class="ar-check__label">Private</span>
+                            <span class="ar-check__desc">Requires GitHub App for clone auth</span>
+                        </span>
+                    </label>
+                    <label class="ar-check">
+                        <input type="checkbox" name="external">
+                        <span class="ar-check__box"></span>
+                        <span>
+                            <span class="ar-check__label">External</span>
+                            <span class="ar-check__desc">Include contributor breakdown in reports</span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="ar-form-section">
+                <div class="ar-form-section__label">Forge Integration <span class="ar-form-section__opt">optional</span></div>
+                <p class="ar-form-section__desc">Connect to a forge to include merged PRs and code review activity in reports.</p>
+                <div class="ar-form-grid">
+                    <div class="ar-field">
+                        <label for="forge_type" class="ar-label">Forge</label>
+                        <select id="forge_type" name="forge_type" class="ar-select" onchange="updateForge(this, 'add')">
+                            <option value="">None</option>
+                            <option value="github">GitHub</option>
+                            <option value="forgejo">Forgejo / Gitea</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="ar-forge" id="forge-add" hidden>
+                    <div class="ar-forge__help" id="forge-help-add"></div>
+                    <div class="ar-form-grid">
+                        <div class="ar-field">
+                            <label id="forge-label1-add" class="ar-label">Owner</label>
+                            <input type="text" name="forge_owner" id="forge-input1-add" class="ar-input" placeholder="">
+                        </div>
+                        <div class="ar-field">
+                            <label id="forge-label2-add" class="ar-label">Repo</label>
+                            <input type="text" name="forge_repo" id="forge-input2-add" class="ar-input" placeholder="">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ar-form-actions">
+                <button type="submit" class="ar-btn ar-btn--primary">Add Repository</button>
+                <button type="button" class="ar-btn ar-btn--ghost" onclick="document.getElementById('add-section').setAttribute('hidden','')">Cancel</button>
+            </div>
         </form>
     </div>
 
-    <div class="list-section">
-        <h2>Repositories ({{len .Content.Repos}})</h2>
+    <!-- Repository List -->
+    <div class="ar-list">
+        <div class="ar-list__header">
+            <span class="ar-list__count">{{len .Content.Repos}} repositories</span>
+        </div>
         {{if .Content.Repos}}
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>URL</th>
-                    <th>Branch</th>
-                    <th>Type</th>
-                    <th>Status</th>
-                    <th>Reports</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {{range .Content.Repos}}
-                <tr class="repo-row" data-name="{{.Name}}">
-                    <td><a href="/repos/{{.Name}}">{{.Name}}</a></td>
-                    <td class="url-cell">{{.URL}}</td>
-                    <td>{{.Branch}}</td>
-                    <td class="type-cell">
-                        {{if .Private}}<span class="badge badge-private">Private</span>{{end}}
-                        {{if .External}}<span class="badge badge-external">External</span>{{end}}
-                        {{if and (not .Private) (not .External)}}<span class="badge badge-default">Internal</span>{{end}}
-                        {{if eq .ForgeType "github"}}<span class="badge badge-github">GitHub</span>{{end}}
-                        {{if eq .ForgeType "forgejo"}}<span class="badge badge-forgejo">Forgejo</span>{{end}}
-                    </td>
-                    <td>
-                        {{if .Active}}
-                        <span class="status-active">Active</span>
-                        {{else}}
-                        <span class="status-inactive">Inactive</span>
-                        {{end}}
-                    </td>
-                    <td>{{.ReportCount}}</td>
-                    <td class="actions-cell">
-                        <button type="button" class="btn-small btn-edit" onclick="toggleEdit('{{.Name}}')">Edit</button>
-                        {{if .Active}}
-                        <form action="/admin/repos/toggle" method="POST" class="inline-form">
-                            <input type="hidden" name="name" value="{{.Name}}">
-                            <input type="hidden" name="action" value="deactivate">
-                            <button type="submit" class="btn-small">Deactivate</button>
-                        </form>
-                        {{else}}
-                        <form action="/admin/repos/toggle" method="POST" class="inline-form">
-                            <input type="hidden" name="name" value="{{.Name}}">
-                            <input type="hidden" name="action" value="activate">
-                            <button type="submit" class="btn-small">Activate</button>
-                        </form>
-                        {{end}}
-                        <form action="/admin/repos/remove" method="POST" class="inline-form" onsubmit="return confirm('Are you sure you want to remove {{.Name}}?');">
-                            <input type="hidden" name="name" value="{{.Name}}">
-                            <button type="submit" class="btn-small btn-danger">Remove</button>
-                        </form>
-                    </td>
-                </tr>
-                <tr class="edit-row" id="edit-{{.Name}}" style="display: none;">
-                    <td colspan="7">
-                        <form action="/admin/repos/update" method="POST" class="edit-form">
-                            <input type="hidden" name="name" value="{{.Name}}">
-                            <div class="edit-form-grid">
-                                <div class="form-row">
-                                    <label>URL</label>
-                                    <input type="url" name="url" value="{{.URL}}" placeholder="https://github.com/user/repo">
-                                </div>
-                                <div class="form-row">
-                                    <label>Branch</label>
-                                    <input type="text" name="branch" value="{{.Branch}}" placeholder="main">
-                                </div>
-                                <div class="form-row checkbox-row">
-                                    <label>
-                                        <input type="checkbox" name="private" {{if .Private}}checked{{end}}>
-                                        Private
-                                    </label>
-                                </div>
-                                <div class="form-row checkbox-row">
-                                    <label>
-                                        <input type="checkbox" name="external" {{if .External}}checked{{end}}>
-                                        External
-                                    </label>
-                                </div>
-                                <div class="form-row">
-                                    <label>Forge</label>
-                                    <select name="forge_type" onchange="toggleForgeDetails(this, '{{.Name}}')">
-                                        <option value="">None</option>
-                                        <option value="github" {{if eq .ForgeType "github"}}selected{{end}}>GitHub</option>
-                                        <option value="forgejo" {{if eq .ForgeType "forgejo"}}selected{{end}}>Forgejo</option>
-                                    </select>
-                                </div>
-                                <div class="forge-details" id="forge-details-{{.Name}}" {{if not .ForgeType}}style="display:none"{{end}}>
-                                    <div class="form-row">
-                                        <label>Owner/Instance</label>
-                                        <input type="text" name="forge_owner" value="{{.ForgeOwner}}" placeholder="varnish or codeberg">
-                                    </div>
-                                    <div class="form-row">
-                                        <label>Repo</label>
-                                        <input type="text" name="forge_repo" value="{{.ForgeRepo}}" placeholder="varnish-cache-plus or owner/repo">
-                                    </div>
-                                </div>
-                                <div class="edit-actions">
-                                    <button type="submit" class="btn">Save</button>
-                                    <button type="button" class="btn btn-secondary" onclick="toggleEdit('{{.Name}}')">Cancel</button>
-                                </div>
+        {{range .Content.Repos}}
+        <div class="ar-repo" data-name="{{.Name}}">
+            <div class="ar-repo__main">
+                <div class="ar-repo__info">
+                    <div class="ar-repo__name">
+                        <a href="/repos/{{.Name}}">{{.Name}}</a>
+                        {{if .Active}}<span class="ar-dot ar-dot--active" title="Active"></span>{{else}}<span class="ar-dot ar-dot--inactive" title="Inactive"></span>{{end}}
+                    </div>
+                    <div class="ar-repo__url">{{.URL}}</div>
+                </div>
+                <div class="ar-repo__meta">
+                    <span class="ar-repo__branch">{{.Branch}}</span>
+                    {{if .Private}}<span class="ar-tag ar-tag--private">private</span>{{end}}
+                    {{if .External}}<span class="ar-tag ar-tag--external">external</span>{{end}}
+                    {{if eq .ForgeType "github"}}<span class="ar-tag ar-tag--github">github</span>{{end}}
+                    {{if eq .ForgeType "forgejo"}}<span class="ar-tag ar-tag--forgejo">forgejo</span>{{end}}
+                    <span class="ar-repo__reports" title="{{.ReportCount}} reports">{{.ReportCount}} reports</span>
+                </div>
+                <div class="ar-repo__actions">
+                    <button type="button" class="ar-btn ar-btn--small" onclick="toggleEdit('{{.Name}}')">Edit</button>
+                    {{if .Active}}
+                    <form action="/admin/repos/toggle" method="POST" class="ar-inline">
+                        <input type="hidden" name="name" value="{{.Name}}">
+                        <input type="hidden" name="action" value="deactivate">
+                        <button type="submit" class="ar-btn ar-btn--small">Deactivate</button>
+                    </form>
+                    {{else}}
+                    <form action="/admin/repos/toggle" method="POST" class="ar-inline">
+                        <input type="hidden" name="name" value="{{.Name}}">
+                        <input type="hidden" name="action" value="activate">
+                        <button type="submit" class="ar-btn ar-btn--small ar-btn--accent">Activate</button>
+                    </form>
+                    {{end}}
+                    <form action="/admin/repos/remove" method="POST" class="ar-inline" onsubmit="return confirm('Remove {{.Name}}? This cannot be undone.');">
+                        <input type="hidden" name="name" value="{{.Name}}">
+                        <button type="submit" class="ar-btn ar-btn--small ar-btn--danger">Remove</button>
+                    </form>
+                </div>
+            </div>
+            <div class="ar-repo__edit" id="edit-{{.Name}}" hidden>
+                <form action="/admin/repos/update" method="POST">
+                    <input type="hidden" name="name" value="{{.Name}}">
+                    <div class="ar-form-grid">
+                        <div class="ar-field">
+                            <label class="ar-label">Clone URL</label>
+                            <input type="url" name="url" value="{{.URL}}" class="ar-input ar-input--wide">
+                        </div>
+                        <div class="ar-field">
+                            <label class="ar-label">Branch</label>
+                            <input type="text" name="branch" value="{{.Branch}}" class="ar-input ar-input--narrow">
+                        </div>
+                    </div>
+                    <div class="ar-checks ar-checks--row">
+                        <label class="ar-check">
+                            <input type="checkbox" name="private" {{if .Private}}checked{{end}}>
+                            <span class="ar-check__box"></span>
+                            <span class="ar-check__label">Private</span>
+                        </label>
+                        <label class="ar-check">
+                            <input type="checkbox" name="external" {{if .External}}checked{{end}}>
+                            <span class="ar-check__box"></span>
+                            <span class="ar-check__label">External</span>
+                        </label>
+                    </div>
+                    <div class="ar-form-grid" style="margin-top: 0.75rem;">
+                        <div class="ar-field">
+                            <label class="ar-label">Forge</label>
+                            <select name="forge_type" class="ar-select" onchange="updateForge(this, '{{.Name}}')">
+                                <option value="">None</option>
+                                <option value="github" {{if eq .ForgeType "github"}}selected{{end}}>GitHub</option>
+                                <option value="forgejo" {{if eq .ForgeType "forgejo"}}selected{{end}}>Forgejo / Gitea</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="ar-forge" id="forge-{{.Name}}" {{if not .ForgeType}}hidden{{end}}>
+                        <div class="ar-forge__help" id="forge-help-{{.Name}}"></div>
+                        <div class="ar-form-grid">
+                            <div class="ar-field">
+                                <label id="forge-label1-{{.Name}}" class="ar-label">{{if eq .ForgeType "github"}}Owner{{else if eq .ForgeType "forgejo"}}Instance{{else}}Owner{{end}}</label>
+                                <input type="text" name="forge_owner" id="forge-input1-{{.Name}}" value="{{.ForgeOwner}}" class="ar-input" placeholder="">
                             </div>
-                        </form>
-                    </td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
+                            <div class="ar-field">
+                                <label id="forge-label2-{{.Name}}" class="ar-label">{{if eq .ForgeType "forgejo"}}Owner/Repo{{else}}Repo{{end}}</label>
+                                <input type="text" name="forge_repo" id="forge-input2-{{.Name}}" value="{{.ForgeRepo}}" class="ar-input" placeholder="">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ar-form-actions">
+                        <button type="submit" class="ar-btn ar-btn--primary">Save Changes</button>
+                        <button type="button" class="ar-btn ar-btn--ghost" onclick="toggleEdit('{{.Name}}')">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {{end}}
         {{else}}
-        <p class="empty-state">No repositories configured.</p>
+        <div class="ar-empty">
+            <div class="ar-empty__icon">&gt;_</div>
+            <div class="ar-empty__text">No repositories configured</div>
+            <div class="ar-empty__hint">Add a repository to start tracking activity</div>
+        </div>
         {{end}}
     </div>
 </div>
 
 <style>
-.page-header {
+/* ── Layout ─────────────────────────────────────────── */
+.admin-repos {
+    max-width: 900px;
+}
+
+.ar-header {
     display: flex;
+    align-items: flex-end;
     justify-content: space-between;
-    align-items: center;
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
+    gap: 1rem;
 }
 
-.back-link {
+.ar-back {
+    font-size: 0.75rem;
     color: var(--text-muted);
-    font-size: 0.875rem;
+    display: block;
+    margin-bottom: 0.25rem;
 }
 
-.add-form-section {
+.ar-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+/* ── Buttons ────────────────────────────────────────── */
+.ar-btn {
+    font-family: inherit;
+    font-size: 0.8125rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.12s ease;
+    white-space: nowrap;
+}
+
+.ar-btn:hover {
+    border-color: var(--text-muted);
+}
+
+.ar-btn--primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg-primary);
+}
+
+.ar-btn--primary:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.ar-btn--ghost {
+    border-color: transparent;
+    color: var(--text-secondary);
+}
+
+.ar-btn--ghost:hover {
+    color: var(--text-primary);
+    border-color: var(--border);
+}
+
+.ar-btn--small {
+    font-size: 0.6875rem;
+    padding: 0.25rem 0.625rem;
+}
+
+.ar-btn--accent {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.ar-btn--danger {
+    color: var(--error);
+    border-color: transparent;
+}
+
+.ar-btn--danger:hover {
+    border-color: var(--error);
+}
+
+.ar-inline {
+    display: inline;
+}
+
+/* ── Panel (Add form container) ─────────────────────── */
+.ar-panel {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
+    border-radius: 6px;
     padding: 1.5rem;
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
 }
 
-.add-form-section h2 {
-    margin-bottom: 1rem;
+/* ── Form structure ─────────────────────────────────── */
+.ar-form-section {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
 }
 
-.add-form {
+.ar-form-section:last-of-type {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.ar-form-section__label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+    margin-bottom: 0.75rem;
+}
+
+.ar-form-section__opt {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.ar-form-section__desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+    line-height: 1.5;
+}
+
+.ar-form-grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 1rem;
-    align-items: flex-end;
+    gap: 0.75rem;
+    align-items: flex-start;
 }
 
-.form-row {
+.ar-field {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
 }
 
-.form-row label {
-    font-size: 0.75rem;
+.ar-label {
+    font-size: 0.6875rem;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     color: var(--text-muted);
 }
 
-.form-row input[type="text"],
-.form-row input[type="url"] {
-    padding: 0.5rem;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    color: var(--text);
+.ar-input,
+.ar-select {
     font-family: inherit;
+    font-size: 0.8125rem;
+    padding: 0.4375rem 0.5rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-primary);
     width: 200px;
+    transition: border-color 0.12s ease;
 }
 
-.checkbox-row {
+.ar-input:focus,
+.ar-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.ar-input--wide {
+    width: 320px;
+}
+
+.ar-input--narrow {
+    width: 100px;
+}
+
+.ar-hint {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+}
+
+.ar-select {
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%236e7681' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    padding-right: 1.75rem;
+}
+
+/* ── Checkboxes ─────────────────────────────────────── */
+.ar-checks {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.ar-checks--row {
     flex-direction: row;
+    gap: 1.5rem;
 }
 
-.checkbox-row label {
+.ar-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-size: 0.8125rem;
+}
+
+.ar-check input[type="checkbox"] {
+    display: none;
+}
+
+.ar-check__box {
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: var(--bg-primary);
+    flex-shrink: 0;
+    margin-top: 2px;
+    position: relative;
+    transition: all 0.12s ease;
+}
+
+.ar-check input:checked + .ar-check__box {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.ar-check input:checked + .ar-check__box::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 1px;
+    width: 5px;
+    height: 8px;
+    border: solid var(--bg-primary);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.ar-check__label {
+    color: var(--text-primary);
+    display: block;
+}
+
+.ar-check__desc {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    display: block;
+    margin-top: 0.125rem;
+}
+
+/* ── Forge sub-section ──────────────────────────────── */
+.ar-forge {
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    border-left: 2px solid var(--border);
+}
+
+.ar-forge__help {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-bottom: 0.625rem;
+}
+
+.ar-forge__help:empty {
+    display: none;
+}
+
+/* ── Form actions ───────────────────────────────────── */
+.ar-form-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border);
+}
+
+/* ── Repository list ────────────────────────────────── */
+.ar-list__header {
+    margin-bottom: 0.75rem;
+}
+
+.ar-list__count {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.ar-repo {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+    transition: border-color 0.12s ease;
+}
+
+.ar-repo:hover {
+    border-color: var(--text-muted);
+}
+
+.ar-repo__main {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.875rem 1rem;
+}
+
+.ar-repo__info {
+    min-width: 0;
+}
+
+.ar-repo__name {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.875rem;
 }
 
-.btn {
-    padding: 0.5rem 1rem;
-    background: var(--accent);
-    color: var(--bg);
-    border: none;
-    cursor: pointer;
-    font-family: inherit;
+.ar-repo__name a {
+    color: var(--text-primary);
 }
 
-.btn:hover {
-    opacity: 0.9;
+.ar-repo__name a:hover {
+    color: var(--accent);
 }
 
-.btn-secondary {
-    background: var(--bg-secondary);
-    color: var(--text);
-    border: 1px solid var(--border);
-}
-
-.btn-secondary:hover {
-    border-color: var(--accent);
-}
-
-.list-section h2 {
-    margin-bottom: 1rem;
-}
-
-.data-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-.data-table th,
-.data-table td {
-    padding: 0.75rem;
-    text-align: left;
-    border-bottom: 1px solid var(--border);
-}
-
-.data-table th {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+.ar-repo__url {
+    font-size: 0.6875rem;
     color: var(--text-muted);
-}
-
-.url-cell {
-    max-width: 300px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    margin-top: 0.125rem;
+}
+
+.ar-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.ar-dot--active {
+    background: var(--success);
+    box-shadow: 0 0 4px rgba(63, 185, 80, 0.4);
+}
+
+.ar-dot--inactive {
+    background: var(--text-muted);
+}
+
+.ar-repo__meta {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    flex-shrink: 0;
+}
+
+.ar-repo__branch {
+    font-size: 0.6875rem;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    padding: 0.125rem 0.5rem;
+    border-radius: 3px;
+}
+
+.ar-repo__reports {
+    font-size: 0.6875rem;
     color: var(--text-muted);
 }
 
-.type-cell {
-    white-space: nowrap;
-}
-
-.badge {
-    display: inline-block;
-    padding: 0.125rem 0.375rem;
-    font-size: 0.625rem;
+.ar-tag {
+    font-size: 0.5625rem;
+    font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    padding: 0.125rem 0.375rem;
     border-radius: 2px;
-    margin-right: 0.25rem;
 }
 
-.badge-private {
-    background: #4a4a6a;
-    color: #c4c4e4;
-}
-
-.badge-external {
-    background: #2d4a3a;
-    color: #8fc4a4;
-}
-
-.badge-default {
-    background: var(--bg-secondary);
-    color: var(--text-muted);
-}
-
-.badge-github {
-    background: #238636;
-    color: #ffffff;
-}
-
-.badge-forgejo {
-    background: #fb923c;
-    color: #1a1a2e;
-}
-
-.forge-details {
-    display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
-}
-
-.status-active {
+.ar-tag--private {
+    background: rgba(88, 166, 255, 0.12);
     color: var(--accent);
 }
 
-.status-inactive {
-    color: var(--text-muted);
+.ar-tag--external {
+    background: rgba(63, 185, 80, 0.12);
+    color: var(--success);
 }
 
-.actions-cell {
+.ar-tag--github {
+    background: rgba(63, 185, 80, 0.15);
+    color: #3fb950;
+}
+
+.ar-tag--forgejo {
+    background: rgba(251, 146, 60, 0.15);
+    color: #fb923c;
+}
+
+.ar-repo__actions {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.375rem;
+    flex-shrink: 0;
 }
 
-.inline-form {
-    display: inline;
-}
-
-.btn-small {
-    padding: 0.25rem 0.5rem;
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text);
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 0.75rem;
-}
-
-.btn-small:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-}
-
-.btn-edit:hover {
-    border-color: #6699ff;
-    color: #6699ff;
-}
-
-.btn-danger:hover {
-    border-color: #ff6b6b;
-    color: #ff6b6b;
-}
-
-.edit-row {
-    background: var(--bg-secondary);
-}
-
-.edit-row td {
+/* ── Edit panel ─────────────────────────────────────── */
+.ar-repo__edit {
+    border-top: 1px solid var(--border);
     padding: 1rem;
+    background: var(--bg-tertiary);
+    border-radius: 0 0 6px 6px;
 }
 
-.edit-form-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
-    align-items: flex-end;
-}
-
-.edit-form-grid .form-row input[type="text"],
-.edit-form-grid .form-row input[type="url"] {
-    width: 250px;
-}
-
-.edit-actions {
-    display: flex;
-    gap: 0.5rem;
-    margin-left: auto;
-}
-
-.empty-state {
-    color: var(--text-muted);
+/* ── Empty state ────────────────────────────────────── */
+.ar-empty {
     text-align: center;
-    padding: 2rem;
+    padding: 3rem 1.5rem;
+    background: var(--bg-secondary);
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+}
+
+.ar-empty__icon {
+    font-size: 1.5rem;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+    opacity: 0.5;
+}
+
+.ar-empty__text {
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.ar-empty__hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+/* ── Responsive ─────────────────────────────────────── */
+@media (max-width: 700px) {
+    .ar-repo__main {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+
+    .ar-repo__actions {
+        justify-content: flex-start;
+    }
+
+    .ar-input--wide {
+        width: 100%;
+    }
+
+    .ar-form-grid {
+        flex-direction: column;
+    }
+
+    .ar-input,
+    .ar-select {
+        width: 100%;
+    }
+
+    .ar-input--narrow {
+        width: 100%;
+    }
 }
 </style>
 
 <script>
 function toggleEdit(name) {
-    const editRow = document.getElementById('edit-' + name);
-    if (editRow) {
-        editRow.style.display = editRow.style.display === 'none' ? 'table-row' : 'none';
+    var el = document.getElementById('edit-' + name);
+    if (el) el.toggleAttribute('hidden');
+}
+
+function updateForge(select, id) {
+    var forge = document.getElementById('forge-' + id);
+    var label1 = document.getElementById('forge-label1-' + id);
+    var label2 = document.getElementById('forge-label2-' + id);
+    var input1 = document.getElementById('forge-input1-' + id);
+    var input2 = document.getElementById('forge-input2-' + id);
+    var help = document.getElementById('forge-help-' + id);
+
+    if (!forge) return;
+
+    if (select.value) {
+        forge.removeAttribute('hidden');
+    } else {
+        forge.setAttribute('hidden', '');
+        if (help) help.textContent = '';
+        return;
+    }
+
+    if (select.value === 'github') {
+        if (label1) label1.textContent = 'Owner';
+        if (label2) label2.textContent = 'Repo';
+        if (input1) input1.placeholder = 'e.g. varnish';
+        if (input2) input2.placeholder = 'e.g. varnish-cache-plus';
+        if (help) help.textContent = 'GitHub org or user that owns the repository, and the repository name. These are used to query the GitHub API for merged PRs and reviews.';
+    } else if (select.value === 'forgejo') {
+        if (label1) label1.textContent = 'Config Instance';
+        if (label2) label2.textContent = 'Owner / Repo';
+        if (input1) input1.placeholder = 'e.g. vinyl-cache';
+        if (input2) input2.placeholder = 'e.g. vinyl-cache/vinyl-cache';
+        if (help) help.textContent = 'Instance must match a name in the "forgejo" section of your config YAML (where base_url is defined). Owner/Repo is the path as it appears in the URL.';
     }
 }
 
-function toggleForgeDetails(select, id) {
-    const details = document.getElementById('forge-details-' + id);
-    if (details) {
-        details.style.display = select.value ? 'flex' : 'none';
-    }
-}
+// Initialize forge labels for repos that already have forge configured
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.ar-repo__edit select[name="forge_type"]').forEach(function(select) {
+        if (select.value) {
+            var form = select.closest('form');
+            var name = form.querySelector('input[name="name"]').value;
+            updateForge(select, name);
+        }
+    });
+});
 </script>
 {{end}}

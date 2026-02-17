@@ -225,19 +225,14 @@ func (s *ReportService) GenerateAllReposSince(ctx context.Context, sinceDate str
 
 // GenerateLastWeek generates reports for the previous complete week for all active repos
 func (s *ReportService) GenerateLastWeek(ctx context.Context, force bool) ([]*GenerateResult, error) {
-	// Calculate the previous complete week
-	now := time.Now()
-	year, week := now.ISOWeek()
+	return s.GenerateLastNWeeks(ctx, 1, force)
+}
 
-	// Go back to previous week
-	week--
-	if week < 1 {
-		year--
-		lastDayOfPrevYear := time.Date(year, 12, 31, 0, 0, 0, 0, time.UTC)
-		_, week = lastDayOfPrevYear.ISOWeek()
+// GenerateLastNWeeks generates reports for the last N complete weeks for all active repos
+func (s *ReportService) GenerateLastNWeeks(ctx context.Context, n int, force bool) ([]*GenerateResult, error) {
+	if n < 1 {
+		n = 1
 	}
-
-	weekStr := git.FormatISOWeek(year, week)
 
 	activeOnly := true
 	repos, err := s.db.ListRepositories(&activeOnly)
@@ -245,14 +240,21 @@ func (s *ReportService) GenerateLastWeek(ctx context.Context, force bool) ([]*Ge
 		return nil, fmt.Errorf("failed to list repositories: %w", err)
 	}
 
+	now := time.Now()
 	var results []*GenerateResult
-	for _, repo := range repos {
-		result, err := s.GenerateForWeek(ctx, repo.Name, weekStr, force)
-		if err != nil {
-			slog.Error("Failed to generate report", "repo", repo.Name, "error", err)
-			continue
+	for weeksBack := 1; weeksBack <= n; weeksBack++ {
+		targetDate := now.AddDate(0, 0, -7*weeksBack)
+		year, week := targetDate.ISOWeek()
+		weekStr := git.FormatISOWeek(year, week)
+
+		for _, repo := range repos {
+			result, err := s.GenerateForWeek(ctx, repo.Name, weekStr, force)
+			if err != nil {
+				slog.Error("Failed to generate report", "repo", repo.Name, "error", err)
+				continue
+			}
+			results = append(results, result)
 		}
-		results = append(results, result)
 	}
 
 	return results, nil

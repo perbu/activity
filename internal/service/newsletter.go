@@ -10,6 +10,7 @@ import (
 	"github.com/perbu/activity/internal/config"
 	"github.com/perbu/activity/internal/db"
 	"github.com/perbu/activity/internal/email"
+	"github.com/perbu/activity/internal/git"
 	"github.com/perbu/activity/internal/newsletter"
 	"github.com/perbu/activity/internal/progress"
 )
@@ -134,8 +135,8 @@ type SendResult struct {
 	TotalSubscribers int
 }
 
-// Send sends newsletters to all subscribers
-func (s *NewsletterService) Send(ctx context.Context, since time.Duration, dryRun bool, output io.Writer) (*SendResult, error) {
+// Send sends newsletters to all subscribers for activity since the given time
+func (s *NewsletterService) Send(ctx context.Context, sinceTime time.Time, dryRun bool, output io.Writer) (*SendResult, error) {
 	// Check if newsletter is enabled
 	if !s.cfg.Newsletter.Enabled && !dryRun {
 		return nil, fmt.Errorf("newsletter is not enabled in config (set newsletter.enabled: true)")
@@ -159,8 +160,7 @@ func (s *NewsletterService) Send(ctx context.Context, since time.Duration, dryRu
 	composer := newsletter.NewComposer(s.db, s.cfg.Newsletter.SubjectPrefix)
 	sender := newsletter.NewSender(s.db, composer, client, dryRun, output)
 
-	sinceTime := time.Now().Add(-since)
-	progress.Log(ctx, "Sending newsletters", "since", sinceTime.Format("2006-01-02 15:04"), "dry_run", dryRun)
+	progress.Log(ctx, "Sending newsletters", "since", sinceTime.Format("2006-01-02"), "dry_run", dryRun)
 
 	// Send to all subscribers
 	result, err := sender.SendAll(ctx, sinceTime)
@@ -178,34 +178,17 @@ func (s *NewsletterService) Send(ctx context.Context, since time.Duration, dryRu
 	}, nil
 }
 
-// ParseSinceDuration parses a duration string like "7d", "1w", "24h"
-func ParseSinceDuration(s string) (time.Duration, error) {
-	if len(s) == 0 {
-		return 7 * 24 * time.Hour, nil // Default to 7 days
+// SendLastWeek sends newsletters covering the previous complete ISO week
+func (s *NewsletterService) SendLastWeek(ctx context.Context, dryRun bool, output io.Writer) (*SendResult, error) {
+	now := time.Now()
+	year, week := now.ISOWeek()
+	week--
+	if week < 1 {
+		year--
+		lastDayOfPrevYear := time.Date(year, 12, 31, 0, 0, 0, 0, time.UTC)
+		_, week = lastDayOfPrevYear.ISOWeek()
 	}
-
-	lastChar := s[len(s)-1]
-	numPart := s[:len(s)-1]
-
-	var multiplier time.Duration
-	switch lastChar {
-	case 'd':
-		multiplier = 24 * time.Hour
-	case 'w':
-		multiplier = 7 * 24 * time.Hour
-	case 'h':
-		multiplier = time.Hour
-	case 'm':
-		multiplier = time.Minute
-	default:
-		// Try standard Go duration parsing
-		return time.ParseDuration(s)
-	}
-
-	var num int
-	if _, err := fmt.Sscanf(numPart, "%d", &num); err != nil {
-		return 0, fmt.Errorf("invalid number: %s", numPart)
-	}
-
-	return time.Duration(num) * multiplier, nil
+	start, _ := git.ISOWeekBounds(year, week)
+	return s.Send(ctx, start, dryRun, output)
 }
+

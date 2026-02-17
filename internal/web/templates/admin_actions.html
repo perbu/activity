@@ -1,75 +1,124 @@
 {{define "content"}}
-<div class="admin-actions">
-    <div class="page-header">
-        <h1>Manual Actions</h1>
-        <a href="/admin" class="back-link">&larr; Back to Admin</a>
+<div class="aa">
+    <div class="aa-header">
+        <div>
+            <a href="/admin" class="aa-back">&larr; admin</a>
+            <h1 class="aa-title">Manual Actions</h1>
+        </div>
     </div>
 
-    <div class="action-section">
-        <h2>Update Repositories</h2>
-        <p class="action-desc">Pull latest changes from all active repositories.</p>
-        <button type="button" class="btn" onclick="runAction('/admin/update/stream', this, 'output-update')">
+    <div class="aa-section" data-step="01">
+        <div class="aa-section-head">
+            <h2 class="aa-section-title">Update Repositories</h2>
+            <span class="aa-section-tag">git pull</span>
+        </div>
+        <p class="aa-desc">Pull latest changes from all active repositories.</p>
+        <button type="button" class="aa-btn" onclick="runAction('/admin/update/stream', this, 'output-update')">
             Update All Repos
         </button>
-        <pre class="output" id="output-update" hidden></pre>
+        <div class="aa-terminal" id="output-update" hidden>
+            <div class="aa-terminal-bar"><span class="aa-terminal-dot"></span><span class="aa-terminal-dot"></span><span class="aa-terminal-dot"></span></div>
+            <pre class="aa-terminal-output"></pre>
+        </div>
     </div>
 
-    <div class="action-section">
-        <h2>Generate Reports</h2>
-        <p class="action-desc">Generate weekly reports for the previous complete week for all active repositories.</p>
-        <button type="button" class="btn" onclick="runAction('/admin/generate/stream', this, 'output-generate')">
-            Generate Reports
-        </button>
-        <pre class="output" id="output-generate" hidden></pre>
-    </div>
-
-    <div class="action-section">
-        <h2>Send Newsletters</h2>
-        <p class="action-desc">Send activity digests to all subscribers.</p>
-        <form id="newsletter-form" class="action-form">
-            <div class="form-row">
-                <label for="since">Activity Since</label>
-                <select id="since" name="since">
-                    <option value="1d">Last 24 hours</option>
-                    <option value="3d">Last 3 days</option>
-                    <option value="7d" selected>Last 7 days</option>
-                    <option value="2w">Last 2 weeks</option>
-                    <option value="4w">Last 4 weeks</option>
-                </select>
+    <div class="aa-section" data-step="02">
+        <div class="aa-section-head">
+            <h2 class="aa-section-title">Generate Reports</h2>
+            <span class="aa-section-tag">llm</span>
+        </div>
+        <p class="aa-desc">Generate weekly reports for all active repositories.</p>
+        <form id="generate-form" class="aa-form">
+            <div class="aa-field">
+                <label class="aa-label" for="weeks_back">Weeks Back</label>
+                <div class="aa-select-wrap">
+                    <select id="weeks_back" name="weeks_back" class="aa-select">
+                        <option value="1" selected>Last week</option>
+                        <option value="2">Last 2 weeks</option>
+                        <option value="3">Last 3 weeks</option>
+                        <option value="4">Last 4 weeks</option>
+                    </select>
+                </div>
             </div>
-            <div class="form-row checkbox-row">
-                <label>
-                    <input type="checkbox" name="dry_run" id="dry_run" checked>
-                    Dry run (preview only)
+            <div class="aa-field aa-field--check">
+                <label class="aa-checkbox">
+                    <input type="checkbox" name="force" id="force">
+                    <span class="aa-checkbox-box"></span>
+                    <span class="aa-checkbox-label">Force regenerate existing</span>
                 </label>
             </div>
-            <button type="button" class="btn" onclick="runNewsletterAction(this)">
+            <button type="button" class="aa-btn" onclick="runGenerateAction(this)">
+                Generate Reports
+            </button>
+        </form>
+        <div class="aa-terminal" id="output-generate" hidden>
+            <div class="aa-terminal-bar"><span class="aa-terminal-dot"></span><span class="aa-terminal-dot"></span><span class="aa-terminal-dot"></span></div>
+            <pre class="aa-terminal-output"></pre>
+        </div>
+    </div>
+
+    <div class="aa-section" data-step="03">
+        <div class="aa-section-head">
+            <h2 class="aa-section-title">Send Newsletters</h2>
+            <span class="aa-section-tag">email</span>
+        </div>
+        <p class="aa-desc">Send activity digest for the previous week to all subscribers.</p>
+        <form id="newsletter-form" class="aa-form">
+            <div class="aa-field aa-field--check">
+                <label class="aa-checkbox">
+                    <input type="checkbox" name="dry_run" id="dry_run" checked>
+                    <span class="aa-checkbox-box"></span>
+                    <span class="aa-checkbox-label">Dry run (preview only)</span>
+                </label>
+            </div>
+            <button type="button" class="aa-btn" onclick="runNewsletterAction(this)">
                 Send Newsletters
             </button>
         </form>
-        <pre class="output" id="output-send" hidden></pre>
-    </div>
-
-    <div class="notice">
-        <p><strong>Note:</strong> Progress messages will appear below each button as the action runs.</p>
+        <div class="aa-terminal" id="output-send" hidden>
+            <div class="aa-terminal-bar"><span class="aa-terminal-dot"></span><span class="aa-terminal-dot"></span><span class="aa-terminal-dot"></span></div>
+            <pre class="aa-terminal-output"></pre>
+        </div>
     </div>
 </div>
 
 <script>
-function runAction(url, btn, outputId) {
-    const output = document.getElementById(outputId);
-    output.hidden = false;
-    output.textContent = '';
+function getTerminalOutput(wrapperId) {
+    return document.getElementById(wrapperId).querySelector('.aa-terminal-output');
+}
+
+function showTerminal(wrapperId) {
+    const wrapper = document.getElementById(wrapperId);
+    wrapper.hidden = false;
+    wrapper.querySelector('.aa-terminal-output').textContent = '';
+    wrapper.classList.remove('aa-terminal--done', 'aa-terminal--error');
+    wrapper.classList.add('aa-terminal--active');
+}
+
+function finishTerminal(wrapperId, isError) {
+    const wrapper = document.getElementById(wrapperId);
+    wrapper.classList.remove('aa-terminal--active');
+    wrapper.classList.add(isError ? 'aa-terminal--error' : 'aa-terminal--done');
+}
+
+function streamSSE(url, btn, wrapperId, body) {
+    showTerminal(wrapperId);
+    const output = getTerminalOutput(wrapperId);
     btn.disabled = true;
 
-    fetch(url, {method: 'POST'}).then(response => {
+    const opts = {method: 'POST'};
+    if (body) opts.body = body;
+
+    fetch(url, opts).then(response => {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        let isError = false;
 
         function read() {
             reader.read().then(({done, value}) => {
                 if (done) {
                     btn.disabled = false;
+                    finishTerminal(wrapperId, isError);
                     return;
                 }
                 const text = decoder.decode(value);
@@ -78,191 +127,392 @@ function runAction(url, btn, outputId) {
                     if (line.startsWith('data: ')) {
                         output.textContent += line.slice(6) + '\n';
                     } else if (line.startsWith('event: done')) {
-                        // Mark completion visually
-                        output.textContent += '--- Done ---\n';
+                        output.textContent += '\n~ done\n';
                     } else if (line.startsWith('event: error')) {
-                        output.textContent += '--- Error ---\n';
+                        output.textContent += '\n~ error\n';
+                        isError = true;
                     }
                 }
                 output.scrollTop = output.scrollHeight;
                 read();
             }).catch(err => {
-                output.textContent += 'Connection error: ' + err.message + '\n';
+                output.textContent += '\n~ connection error: ' + err.message + '\n';
                 btn.disabled = false;
+                finishTerminal(wrapperId, true);
             });
         }
         read();
     }).catch(err => {
-        output.textContent = 'Request failed: ' + err.message + '\n';
+        output.textContent = '~ request failed: ' + err.message + '\n';
         btn.disabled = false;
+        finishTerminal(wrapperId, true);
     });
 }
 
-function runNewsletterAction(btn) {
-    const output = document.getElementById('output-send');
-    output.hidden = false;
-    output.textContent = '';
-    btn.disabled = true;
+function runAction(url, btn, wrapperId) {
+    streamSSE(url, btn, wrapperId);
+}
 
-    const since = document.getElementById('since').value;
-    const dryRun = document.getElementById('dry_run').checked;
-
+function runGenerateAction(btn) {
     const formData = new FormData();
-    formData.append('since', since);
-    if (dryRun) {
+    formData.append('weeks_back', document.getElementById('weeks_back').value);
+    if (document.getElementById('force').checked) {
+        formData.append('force', 'on');
+    }
+    streamSSE('/admin/generate/stream', btn, 'output-generate', formData);
+}
+
+function runNewsletterAction(btn) {
+    const formData = new FormData();
+    if (document.getElementById('dry_run').checked) {
         formData.append('dry_run', 'on');
     }
-
-    fetch('/admin/send/stream', {
-        method: 'POST',
-        body: formData
-    }).then(response => {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        function read() {
-            reader.read().then(({done, value}) => {
-                if (done) {
-                    btn.disabled = false;
-                    return;
-                }
-                const text = decoder.decode(value);
-                const lines = text.split('\n');
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        output.textContent += line.slice(6) + '\n';
-                    } else if (line.startsWith('event: done')) {
-                        output.textContent += '--- Done ---\n';
-                    } else if (line.startsWith('event: error')) {
-                        output.textContent += '--- Error ---\n';
-                    }
-                }
-                output.scrollTop = output.scrollHeight;
-                read();
-            }).catch(err => {
-                output.textContent += 'Connection error: ' + err.message + '\n';
-                btn.disabled = false;
-            });
-        }
-        read();
-    }).catch(err => {
-        output.textContent = 'Request failed: ' + err.message + '\n';
-        btn.disabled = false;
-    });
+    streamSSE('/admin/send/stream', btn, 'output-send', formData);
 }
 </script>
 
 <style>
-.page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 2rem;
+/* ── Layout ─────────────────────────────────────────── */
+.aa {
+    max-width: 720px;
 }
 
-.back-link {
+.aa-header {
+    margin-bottom: 2.5rem;
+}
+
+.aa-back {
+    display: inline-block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
     color: var(--text-muted);
-    font-size: 0.875rem;
+    margin-bottom: 8px;
+    transition: color 0.15s ease;
 }
 
-.action-section {
+.aa-back:hover {
+    color: var(--accent);
+}
+
+.aa-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+}
+
+/* ── Sections ───────────────────────────────────────── */
+.aa-section {
+    position: relative;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
+    border-radius: 8px;
     padding: 1.5rem;
-    margin-bottom: 1.5rem;
-}
-
-.action-section h2 {
-    margin-bottom: 0.5rem;
-}
-
-.action-desc {
-    color: var(--text-muted);
     margin-bottom: 1rem;
-    font-size: 0.875rem;
+    transition: border-color 0.2s ease;
 }
 
-.action-form {
+.aa-section:hover {
+    border-color: var(--text-muted);
+}
+
+.aa-section::before {
+    content: attr(data-step);
+    position: absolute;
+    top: 1.5rem;
+    right: 1.5rem;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    opacity: 0.4;
+    letter-spacing: 0.05em;
+}
+
+.aa-section-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.aa-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.aa-section-tag {
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+}
+
+.aa-desc {
+    color: var(--text-secondary);
+    font-size: 12px;
+    margin-bottom: 1.25rem;
+    line-height: 1.5;
+}
+
+/* ── Form controls ──────────────────────────────────── */
+.aa-form {
     display: flex;
     flex-wrap: wrap;
     gap: 1rem;
     align-items: flex-end;
 }
 
-.form-row {
+.aa-field {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 5px;
 }
 
-.form-row label {
-    font-size: 0.75rem;
+.aa-field--check {
+    flex-direction: row;
+    align-items: center;
+}
+
+.aa-label {
+    font-size: 10px;
+    font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.08em;
     color: var(--text-muted);
 }
 
-.form-row select {
-    padding: 0.5rem;
-    background: var(--bg);
+.aa-select-wrap {
+    position: relative;
+}
+
+.aa-select-wrap::after {
+    content: "";
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid var(--text-muted);
+    pointer-events: none;
+}
+
+.aa-select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 7px 30px 7px 10px;
+    background: var(--bg-primary);
     border: 1px solid var(--border);
-    color: var(--text);
+    border-radius: 4px;
+    color: var(--text-primary);
     font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+    min-width: 150px;
 }
 
-.checkbox-row {
-    flex-direction: row;
+.aa-select:hover {
+    border-color: var(--text-muted);
 }
 
-.checkbox-row label {
+.aa-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+/* Custom checkbox */
+.aa-checkbox {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 8px;
     cursor: pointer;
+    user-select: none;
 }
 
-.btn {
-    padding: 0.5rem 1rem;
+.aa-checkbox input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.aa-checkbox-box {
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg-primary);
+    transition: all 0.15s ease;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.aa-checkbox input:checked + .aa-checkbox-box {
     background: var(--accent);
-    color: var(--bg);
-    border: none;
+    border-color: var(--accent);
+}
+
+.aa-checkbox input:checked + .aa-checkbox-box::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 4px;
+    height: 8px;
+    border: solid var(--bg-primary);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.aa-checkbox input:focus-visible + .aa-checkbox-box {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+}
+
+.aa-checkbox-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* ── Button ─────────────────────────────────────────── */
+.aa-btn {
+    padding: 7px 16px;
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
     cursor: pointer;
     font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.15s ease;
+    letter-spacing: 0.01em;
 }
 
-.btn:hover {
-    opacity: 0.9;
+.aa-btn:hover {
+    background: var(--accent);
+    color: var(--bg-primary);
 }
 
-.btn:disabled {
-    opacity: 0.5;
+.aa-btn:active {
+    transform: scale(0.98);
+}
+
+.aa-btn:disabled {
+    opacity: 0.4;
     cursor: not-allowed;
+    background: transparent;
+    color: var(--accent);
 }
 
-.output {
+/* ── Terminal output ────────────────────────────────── */
+.aa-terminal {
     margin-top: 1rem;
-    padding: 1rem;
-    background: var(--bg);
     border: 1px solid var(--border);
-    font-family: monospace;
-    font-size: 0.875rem;
-    max-height: 300px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--bg-primary);
+}
+
+.aa-terminal--active {
+    border-color: var(--accent);
+}
+
+.aa-terminal--done {
+    border-color: var(--success);
+}
+
+.aa-terminal--error {
+    border-color: var(--error);
+}
+
+.aa-terminal-bar {
+    display: flex;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border);
+}
+
+.aa-terminal-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    opacity: 0.3;
+}
+
+.aa-terminal--active .aa-terminal-dot:first-child {
+    background: var(--accent);
+    opacity: 1;
+    animation: aa-pulse 1.5s ease-in-out infinite;
+}
+
+.aa-terminal--done .aa-terminal-dot:first-child {
+    background: var(--success);
+    opacity: 1;
+}
+
+.aa-terminal--error .aa-terminal-dot:first-child {
+    background: var(--error);
+    opacity: 1;
+}
+
+@keyframes aa-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.aa-terminal-output {
+    padding: 12px 14px;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    max-height: 280px;
     overflow-y: auto;
     white-space: pre-wrap;
     word-break: break-word;
+    margin: 0;
 }
 
-.notice {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    padding: 1rem;
-    margin-top: 2rem;
-    font-size: 0.875rem;
-    color: var(--text-muted);
+.aa-terminal-output::-webkit-scrollbar {
+    width: 6px;
 }
 
-.notice strong {
-    color: var(--text);
+.aa-terminal-output::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.aa-terminal-output::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+
+/* ── Responsive ─────────────────────────────────────── */
+@media (max-width: 600px) {
+    .aa-form {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .aa-select {
+        width: 100%;
+    }
+
+    .aa-btn {
+        width: 100%;
+        text-align: center;
+    }
 }
 </style>
 {{end}}
