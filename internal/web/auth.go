@@ -68,11 +68,13 @@ func (m *AuthMiddleware) Middleware(next http.Handler) http.Handler {
 		// Store user in context (can be nil for anonymous users)
 		ctx := context.WithValue(r.Context(), authUserKey, user)
 
-		// Log the request
-		if user != nil {
-			slog.Info("request", "method", r.Method, "path", r.URL.Path, "user", user.Email, "admin", user.IsAdmin)
-		} else {
-			slog.Info("request", "method", r.Method, "path", r.URL.Path, "user", "anonymous", "header", m.headerName, "header_value", r.Header.Get(m.headerName))
+		// Log the request (skip health checks to reduce noise)
+		if r.URL.Path != "/healthz" {
+			if user != nil {
+				slog.Info("request", "method", r.Method, "path", r.URL.Path, "user", user.Email, "admin", user.IsAdmin)
+			} else {
+				slog.Info("request", "method", r.Method, "path", r.URL.Path, "user", "anonymous", "header", m.headerName, "header_value", r.Header.Get(m.headerName))
+			}
 		}
 
 		next.ServeHTTP(w, r.WithContext(ctx))
