@@ -1,6 +1,6 @@
 # Activity
 
-AI-powered git commit analyzer that generates human-readable summaries of repository activity. Uses intelligent agents to selectively fetch code diffs only when commit messages are unclear.
+AI-powered git commit analyzer that generates human-readable summaries of repository activity. Uses intelligent agents to selectively fetch code diffs only when commit messages are unclear. Deployed as a web application behind an auth proxy.
 
 ## Features
 
@@ -9,11 +9,14 @@ AI-powered git commit analyzer that generates human-readable summaries of reposi
 - **Cost Controls**: Hard limits on diff fetching, diff size, and total tokens
 - **Incremental Tracking**: Analyzes only new commits since last run
 - **Multi-Repository**: Track and analyze multiple repositories
-- **Cost Efficient**: ~$0.0005-0.01 per analysis depending on commit message quality
+- **Newsletter**: Email subscribers with activity digests via SendGrid
+- **Admin Interface**: Manage repositories, subscribers, and admins through the web UI
+- **Auth Proxy Integration**: Admin routes protected via configurable auth header
 
 ## Requirements
 
 - Go 1.25.3+
+- PostgreSQL
 - Google Gemini API key
 - Git repositories to analyze
 
@@ -39,22 +42,24 @@ Docker images are built and pushed to GitHub Container Registry on tagged releas
 # Pull the latest image
 docker pull ghcr.io/perbu/activity:latest
 
-# Run with environment variables
-docker run -v /path/to/data:/data \
+# Run the web server
+docker run -p 8080:8080 \
+  -v /path/to/data:/data \
   -e GOOGLE_API_KEY=your-api-key \
+  -e DATABASE_URL=postgres://user:pass@host:5432/activity?sslmode=disable \
   ghcr.io/perbu/activity:latest \
-  --data-dir /data \
-  repo list
+  --data-dir /data --host 0.0.0.0
 
 # For private GitHub repositories, include GitHub App credentials
-docker run -v /path/to/data:/data \
+docker run -p 8080:8080 \
+  -v /path/to/data:/data \
   -e GOOGLE_API_KEY=your-api-key \
+  -e DATABASE_URL=postgres://user:pass@host:5432/activity?sslmode=disable \
   -e GITHUB_APP_ID=123456 \
   -e GITHUB_INSTALLATION_ID=789012 \
   -e GITHUB_APP_PRIVATE_KEY="$(cat path/to/key.pem)" \
   ghcr.io/perbu/activity:latest \
-  --data-dir /data \
-  analyze myrepo
+  --data-dir /data --host 0.0.0.0
 ```
 
 Available tags:
@@ -62,59 +67,85 @@ Available tags:
 - `1.0.0` - Specific version (from v1.0.0 tag)
 - `1.0` - Major.minor version
 
-## Quick Start
+## Running
 
-1. Set your API key:
 ```bash
+# Set required environment variables
 export GOOGLE_API_KEY=your-api-key
+export DATABASE_URL=postgres://user:pass@localhost:5432/activity?sslmode=disable
+
+# Development mode (no auth required, dev user treated as admin)
+./activity --data-dir ./data --port 8080
+
+# With config file
+./activity --config /path/to/config.yaml
+
+# Production (behind auth proxy)
+./activity --data-dir /var/lib/activity --port 8080 --host 0.0.0.0
 ```
 
-2. Add a repository:
-```bash
-activity --data-dir ~/.local/share/activity repo add myproject https://github.com/user/repo
-```
+Flags: `--port` (default 8080), `--host` (default localhost), `--config`, `--data-dir`, `--debug`, `--version`.
 
-3. Analyze commits:
-```bash
-activity --data-dir ~/.local/share/activity analyze myproject --since '1 week ago'
-```
+## Web Routes
 
-4. Or update and analyze new commits:
-```bash
-activity --data-dir ~/.local/share/activity update myproject --analyze
-```
+### Public
 
-Note: Flags can appear in any position, so these are equivalent:
-```bash
-activity --data-dir ~/.local/share/activity repo add myproject https://github.com/user/repo
-activity repo add myproject https://github.com/user/repo --data-dir ~/.local/share/activity
-```
+- `/` — Dashboard
+- `/repos` — Repository list
+- `/repos/{name}` — Repository detail
+- `/reports/{id}` — Report detail
+
+### Admin (requires authentication)
+
+- `/admin` — Admin dashboard
+- `/admin/repos` — Repository management (add, remove, activate, update, analyze)
+- `/admin/subscribers` — Newsletter subscriber management
+- `/admin/actions` — Trigger analysis and report generation
+- `/admin/admins` — Admin user management
+
+## Authentication
+
+Activity is designed to run behind an auth proxy (e.g., OAuth2 Proxy, Authelia). The proxy provides the authenticated user's email in a configurable HTTP header (default: `oidc-email`). Admin access is controlled via the `admins` table in PostgreSQL.
+
+In development mode (`dev_mode: true`), authentication is bypassed and a configurable `dev_user` email is used, automatically treated as admin.
 
 ## Configuration
 
-Create `~/.config/activity/config.yaml`:
-
 ```yaml
-data_dir: ~/.local/share/activity
+data_dir: /var/lib/activity  # Directory for git repository clones
+
+database:
+  dsn: postgres://user:pass@localhost:5432/activity?sslmode=disable
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime_seconds: 300
+
+web:
+  auth_header: oidc-email       # Header containing user email from auth proxy
+  seed_admin: admin@example.com # First admin seeded on empty DB
+  dev_mode: false               # Set true for local development
+  dev_user: dev@localhost       # Email used in dev mode
 
 llm:
   provider: gemini
   model: gemini-3.0-flash
   api_key_env: GOOGLE_API_KEY
+  use_agent: true          # Agent mode (default)
+  max_diff_fetches: 5      # Max diffs per analysis
+  max_diff_size_kb: 10     # Max size per diff
+  max_total_tokens: 100000 # ~$0.01 cost limit
 
-  # Basic limits
-  max_commits: 50
-  max_message_length: 1000
+newsletter:
+  enabled: true
+  sendgrid_api_key_env: SENDGRID_API_KEY
 
-  # Agent mode (default) - intelligent diff fetching
-  use_agent: true        # Set to false for Phase 2 simple mode
-  max_diff_fetches: 5    # Max diffs per analysis
-  max_diff_size_kb: 10   # Max size per diff
-  max_total_tokens: 100000  # ~$0.01 cost limit
-  enable_tool_logs: true
+github:
+  app_id_env: GITHUB_APP_ID
+  installation_id_env: GITHUB_INSTALLATION_ID
+  private_key_env: GITHUB_APP_PRIVATE_KEY
 ```
 
-See `config_example.yaml` for all options including custom prompts.
+The database DSN can also be provided via the `DATABASE_URL` environment variable. See `config_example.yaml` for all options including custom prompts.
 
 ## How It Works
 
@@ -128,89 +159,11 @@ The intelligent agent:
 
 **Cost**: ~$0.0005 for well-documented repos, up to ~$0.01 for poorly-documented repos (hard-capped)
 
-### Phase 2 Mode (Fallback)
+### Simple Mode (Fallback)
 
-Simple mode sends only commit metadata (SHA, author, date, message) to LLM.
+Sends only commit metadata (SHA, author, date, message) to the LLM. Enable by setting `use_agent: false` in config.
 
 **Cost**: ~$0.0005 per analysis
-
-Enable by setting `use_agent: false` in config.
-
-## Commands
-
-### Repository Management
-
-```bash
-# Add repository
-activity repo add <name> <url> [--branch main]
-
-# List repositories
-activity list
-activity repo list  # alias
-
-# Remove repository
-activity repo remove <name> [--keep-files]
-
-# Show repository info
-activity repo info <name>
-
-# Activate/deactivate repository
-activity repo activate <name>
-activity repo deactivate <name>
-```
-
-### Analysis
-
-```bash
-# Analyze commits since date
-activity analyze <name> --since '1 week ago'
-activity analyze <name> --since 2024-01-01 --until 2024-01-31
-
-# Analyze last N commits
-activity analyze <name> -n 10
-
-# Update repository and optionally analyze new commits
-activity update <name>
-activity update <name> --analyze
-activity update --all  # Update all active repositories
-```
-
-### Weekly Reports
-
-Generate week-indexed summaries for historical queries and web UI integration.
-
-```bash
-# Generate report for specific week
-activity report generate <name> --week=2026-W03
-
-# Backfill all weeks since a date
-activity report generate <name> --since=2025-12-01
-
-# Regenerate existing reports
-activity report generate <name> --since=2025-12-01 --force
-
-# Show latest report
-activity report show <name> --latest
-
-# Show report for specific week
-activity report show <name> --week=2026-W03
-
-# List all reports for a repository
-activity report list <name>
-
-# List all reports (all repos), filtered by year
-activity report list --all --year=2026
-```
-
-### Prompts
-
-```bash
-# Show current LLM prompts (custom or default)
-activity show-prompts
-
-# Show default prompts even if custom ones are configured
-activity show-prompts --defaults
-```
 
 ## Cost Controls
 
@@ -218,35 +171,20 @@ The agent mode includes multiple safeguards:
 
 - **max_diff_fetches**: Limits number of diffs per analysis (default: 5)
 - **max_diff_size_kb**: Rejects diffs larger than limit (default: 10KB)
-- **max_total_tokens**: Hard cap on total tokens (default: 100K ≈ $0.01)
+- **max_total_tokens**: Hard cap on total tokens (default: 100K ~ $0.01)
 - **Smart prompting**: Agent instructed to use diffs sparingly
 
 ## Database
 
-All data stored in SQLite database at `<data_dir>/activity.db`. Migrations are managed by [goose](https://github.com/pressly/goose) and run automatically on startup.
+PostgreSQL with migrations managed by [goose](https://github.com/pressly/goose), run automatically on startup.
 
 Tables:
 - `repositories`: Tracked repos with metadata
 - `activity_runs`: Analysis results with summaries and cost tracking
 - `weekly_reports`: Week-indexed summaries keyed by (repo, year, week)
-- `subscribers`, `subscriptions`, `newsletter_sends`: Newsletter feature tables
+- `subscribers`, `subscriptions`, `newsletter_sends`: Newsletter tables
 - `admins`: Admin users for web authentication
 - `goose_db_version`: Migration version tracking (managed by goose)
-
-Query examples:
-```sql
-# View latest analysis run
-sqlite3 ~/.local/share/activity/activity.db \
-  "SELECT agent_mode, tool_usage_stats FROM activity_runs ORDER BY id DESC LIMIT 1;"
-
-# View weekly reports
-sqlite3 ~/.local/share/activity/activity.db \
-  "SELECT year, week, commit_count, created_at FROM weekly_reports ORDER BY year DESC, week DESC;"
-
-# Check migration version
-sqlite3 ~/.local/share/activity/activity.db \
-  "SELECT version_id FROM goose_db_version ORDER BY id DESC LIMIT 1;"
-```
 
 ## Development
 
@@ -255,17 +193,20 @@ See `CLAUDE.md` for architecture overview and package descriptions.
 ### Project Structure
 
 ```
-main.go               - CLI entry point (uses kong for parsing)
+main.go               - Entry point, starts web server
 internal/
-  analyzer/           - Analysis logic (Phase 2 + Phase 3)
-  cli/                - Command structs and Run methods (kong-based)
+  analyzer/           - Analysis logic (simple + agent modes)
   config/             - Configuration management
-  db/                 - Database layer
+  db/                 - PostgreSQL database layer
     migrations/       - Goose SQL migrations (embedded)
   email/              - Email client for newsletters
+  forge/              - Forge integration (GitHub, etc.)
   git/                - Git operations
+  github/             - GitHub App authentication
   llm/                - LLM client abstraction
   newsletter/         - Newsletter composition and sending
+  service/            - Business logic layer
+  web/                - HTTP server, routes, templates
 ```
 
 ## License
