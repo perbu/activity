@@ -253,6 +253,11 @@ func (s *ReportService) GenerateLastNWeeks(ctx context.Context, n int, force boo
 				slog.Error("Failed to generate report", "repo", repo.Name, "error", err)
 				continue
 			}
+			if result.NoCommits > 0 {
+				progress.Log(ctx, "No commits found", "week", weekStr, "repo", repo.Name)
+			} else if result.Skipped > 0 {
+				progress.Log(ctx, "Report already exists, skipping", "week", weekStr, "repo", repo.Name)
+			}
 			results = append(results, result)
 		}
 	}

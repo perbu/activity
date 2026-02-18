@@ -584,11 +584,20 @@ func (s *Server) handleAdminGenerateReportStream(w http.ResponseWriter, r *http.
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
 		flusher.Flush()
 	} else {
-		generated := 0
+		generated, skipped, noCommits := 0, 0, 0
 		for _, result := range results {
 			generated += result.Generated
+			skipped += result.Skipped
+			noCommits += result.NoCommits
 		}
-		fmt.Fprintf(w, "event: done\ndata: Generated %d reports for %d repositories\n\n", generated, len(results))
+		summary := fmt.Sprintf("Generated %d reports", generated)
+		if skipped > 0 {
+			summary += fmt.Sprintf(", skipped %d (already exist)", skipped)
+		}
+		if noCommits > 0 {
+			summary += fmt.Sprintf(", %d weeks had no commits", noCommits)
+		}
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", summary)
 		flusher.Flush()
 	}
 }

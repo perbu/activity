@@ -126,13 +126,13 @@ func DefaultConfig() *Config {
 			Model:            "gemini-3.0-flash",
 			APIKeyEnv:        "GOOGLE_API_KEY",
 			MaxCommits:       50,   // Limit to 50 commits per analysis
-			MaxMessageLength: 1000, // Truncate long commit messages
+			MaxMessageLength: 10000, // Truncate long commit messages
 
 			// Phase 3: Agent mode (default) - intelligent diff fetching
-			UseAgent:       true,   // Agent mode by default (set false for Phase 2)
-			MaxDiffFetches: 5,      // Max 5 diffs per analysis
-			MaxDiffSizeKB:  10,     // Max 10KB per diff
-			MaxTotalTokens: 100000, // ~$0.01 cost limit
+			UseAgent:       true,      // Agent mode by default (set false for Phase 2)
+			MaxDiffFetches: 20,        // Max 20 diffs per analysis
+			MaxDiffSizeKB:  50,        // Max 50KB per diff
+			MaxTotalTokens: 5000000,   // ~$0.50 cost limit
 			EnableToolLogs: true,   // Enable logging for debugging
 		},
 		Newsletter: NewsletterConfig{
