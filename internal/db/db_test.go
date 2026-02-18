@@ -3,7 +3,10 @@ package db
 import (
 	"context"
 	"database/sql"
+	"flag"
 	"fmt"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,13 +15,16 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// setupTestDB creates a PostgreSQL container for testing
-func setupTestDB(t *testing.T) (*DB, func()) {
-	t.Helper()
+var testDSN string
+
+func TestMain(m *testing.M) {
+	flag.Parse()
+	if testing.Short() {
+		os.Exit(0)
+	}
 
 	ctx := context.Background()
 
-	// Start PostgreSQL container
 	pgContainer, err := postgres.Run(ctx,
 		"postgres:16-alpine",
 		postgres.WithDatabase("testdb"),
@@ -34,29 +40,78 @@ func setupTestDB(t *testing.T) (*DB, func()) {
 		),
 	)
 	if err != nil {
-		t.Fatalf("failed to start postgres container: %v", err)
+		fmt.Fprintf(os.Stderr, "failed to start postgres container: %v\n", err)
+		os.Exit(1)
 	}
 
-	// Get connection string
 	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		pgContainer.Terminate(ctx)
-		t.Fatalf("failed to get connection string: %v", err)
+		fmt.Fprintf(os.Stderr, "failed to get connection string: %v\n", err)
+		os.Exit(1)
 	}
 
+	testDSN = connStr
+
+	code := m.Run()
+
+	pgContainer.Terminate(ctx)
+	os.Exit(code)
+}
+
+func sanitizeSchemaName(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('_')
+		}
+	}
+	s := b.String()
+	if len(s) > 63 {
+		s = s[:63]
+	}
+	return s
+}
+
+// setupTestDB creates an isolated schema in the shared PostgreSQL container for testing
+func setupTestDB(t *testing.T) (*DB, func()) {
+	t.Helper()
+
+	schema := sanitizeSchemaName(t.Name())
+
+	// Create the schema using a temporary connection
+	rawDB, err := sql.Open("postgres", testDSN)
+	if err != nil {
+		t.Fatalf("failed to open raw db connection: %v", err)
+	}
+	if _, err := rawDB.Exec(fmt.Sprintf(`CREATE SCHEMA "%s"`, schema)); err != nil {
+		rawDB.Close()
+		t.Fatalf("failed to create schema %q: %v", schema, err)
+	}
+	rawDB.Close()
+
+	// Open the database with search_path set to the new schema
+	dsn := testDSN + "&search_path=" + schema
+
 	db, err := Open(OpenConfig{
-		DSN:          connStr,
+		DSN:          dsn,
 		MaxOpenConns: 5,
 		MaxIdleConns: 2,
 	})
 	if err != nil {
-		pgContainer.Terminate(ctx)
+		// Try to clean up the schema on failure
+		if cleanDB, cerr := sql.Open("postgres", testDSN); cerr == nil {
+			cleanDB.Exec(fmt.Sprintf(`DROP SCHEMA "%s" CASCADE`, schema))
+			cleanDB.Close()
+		}
 		t.Fatalf("failed to open database: %v", err)
 	}
 
 	cleanup := func() {
+		db.Exec(fmt.Sprintf(`DROP SCHEMA "%s" CASCADE`, schema))
 		db.Close()
-		pgContainer.Terminate(ctx)
 	}
 
 	return db, cleanup
