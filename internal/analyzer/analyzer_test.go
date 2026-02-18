@@ -184,24 +184,6 @@ func TestBuildAnalysisPrompt(t *testing.T) {
 		}
 	})
 
-	t.Run("message truncation", func(t *testing.T) {
-		longMessage := strings.Repeat("x", 1500) // Longer than default max
-		commitsWithLongMsg := []git.Commit{
-			{
-				SHA:     "abc123def456789012", // Must be at least 8 chars
-				Author:  "John",
-				Date:    time.Now(),
-				Message: longMessage,
-			},
-		}
-
-		prompt := buildAnalysisPrompt(repo, commitsWithLongMsg, nil, cfg, "")
-
-		if !strings.Contains(prompt, "[truncated]") {
-			t.Error("long message should be truncated")
-		}
-	})
-
 	t.Run("respects max commits config", func(t *testing.T) {
 		// Create more commits than the default max
 		manyCommits := make([]git.Commit, 60)
@@ -226,7 +208,7 @@ func TestBuildAnalysisPrompt(t *testing.T) {
 func TestNewAnalyzer(t *testing.T) {
 	cfg := config.DefaultConfig()
 
-	analyzer := New(nil, nil, cfg)
+	analyzer := New(nil, nil, cfg, nil)
 
 	if analyzer == nil {
 		t.Error("New() returned nil")

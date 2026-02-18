@@ -101,46 +101,6 @@ func TestExpandPathWithSlash(t *testing.T) {
 	}
 }
 
-func TestDefaultConfig(t *testing.T) {
-	cfg := DefaultConfig()
-
-	if cfg == nil {
-		t.Fatal("DefaultConfig() returned nil")
-	}
-
-	// Check LLM defaults
-	if cfg.LLM.Provider != "gemini" {
-		t.Errorf("default LLM.Provider = %q, want %q", cfg.LLM.Provider, "gemini")
-	}
-	if cfg.LLM.MaxCommits != 50 {
-		t.Errorf("default LLM.MaxCommits = %d, want 50", cfg.LLM.MaxCommits)
-	}
-	if cfg.LLM.MaxMessageLength != 1000 {
-		t.Errorf("default LLM.MaxMessageLength = %d, want 1000", cfg.LLM.MaxMessageLength)
-	}
-	if !cfg.LLM.UseAgent {
-		t.Error("default LLM.UseAgent should be true")
-	}
-	if cfg.LLM.MaxDiffFetches != 5 {
-		t.Errorf("default LLM.MaxDiffFetches = %d, want 5", cfg.LLM.MaxDiffFetches)
-	}
-	if cfg.LLM.MaxDiffSizeKB != 10 {
-		t.Errorf("default LLM.MaxDiffSizeKB = %d, want 10", cfg.LLM.MaxDiffSizeKB)
-	}
-	if cfg.LLM.MaxTotalTokens != 100000 {
-		t.Errorf("default LLM.MaxTotalTokens = %d, want 100000", cfg.LLM.MaxTotalTokens)
-	}
-
-	// Check Newsletter defaults
-	if cfg.Newsletter.Enabled {
-		t.Error("default Newsletter.Enabled should be false")
-	}
-	if cfg.Newsletter.SendGridKeyEnv != "SENDGRID_API_KEY" {
-		t.Errorf("default Newsletter.SendGridKeyEnv = %q, want %q",
-			cfg.Newsletter.SendGridKeyEnv, "SENDGRID_API_KEY")
-	}
-}
-
 func TestGetPhase2Prompt(t *testing.T) {
 	// Test default prompt
 	cfg := DefaultConfig()

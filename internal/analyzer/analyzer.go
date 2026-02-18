@@ -11,21 +11,24 @@ import (
 	"github.com/perbu/activity/internal/config"
 	"github.com/perbu/activity/internal/db"
 	"github.com/perbu/activity/internal/git"
+	"github.com/perbu/activity/internal/github"
 	"github.com/perbu/activity/internal/llm"
 )
 
 type Analyzer struct {
-	llmClient *llm.Client
-	db        *db.DB
-	config    *config.Config
+	llmClient     *llm.Client
+	db            *db.DB
+	config        *config.Config
+	tokenProvider *github.TokenProvider
 }
 
 // New creates a new Analyzer
-func New(llmClient *llm.Client, database *db.DB, cfg *config.Config) *Analyzer {
+func New(llmClient *llm.Client, database *db.DB, cfg *config.Config, tokenProvider *github.TokenProvider) *Analyzer {
 	return &Analyzer{
-		llmClient: llmClient,
-		db:        database,
-		config:    cfg,
+		llmClient:     llmClient,
+		db:            database,
+		config:        cfg,
+		tokenProvider: tokenProvider,
 	}
 }
 

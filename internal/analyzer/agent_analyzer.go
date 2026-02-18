@@ -143,8 +143,13 @@ func (a *Analyzer) analyzeWithAgent(ctx context.Context, repo *db.Repository, co
 		until = time.Now()
 	}
 
-	// Create agent (forge parameter is nil for now - will be passed from caller when available)
-	agt, err := a.createAnalyzerAgent(ctx, repo, repoPath, costTracker, nil, since, until, logger)
+	// Create forge client for this repo (nil if not configured)
+	f, err := forge.New(repo, a.config, a.tokenProvider)
+	if err != nil {
+		slog.Warn("Failed to create forge client, continuing without PR data", "repo", repo.Name, "error", err)
+	}
+
+	agt, err := a.createAnalyzerAgent(ctx, repo, repoPath, costTracker, f, since, until, logger)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to create agent: %w", err)
 	}
