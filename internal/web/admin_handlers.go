@@ -558,7 +558,7 @@ func (s *Server) handleAdminGenerateReportStream(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
 		fmt.Fprintf(w, "event: error\ndata: Invalid form data\n\n")
 		flusher.Flush()
 		return
@@ -614,7 +614,7 @@ func (s *Server) handleAdminSendNewsletterStream(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
 		fmt.Fprintf(w, "event: error\ndata: Invalid form data\n\n")
 		flusher.Flush()
 		return
