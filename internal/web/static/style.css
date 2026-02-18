@@ -320,6 +320,9 @@ tr:hover {
     .report-layout {
         grid-template-columns: 1fr;
     }
+    .analysis-logs {
+        grid-column: 1;
+    }
 }
 
 .report-sidebar {
