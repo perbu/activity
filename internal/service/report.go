@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/perbu/activity/internal/analyzer"
@@ -399,22 +400,45 @@ func previousWeek(year, week int) (int, int) {
 	return year, week - 1
 }
 
+// CommitInfo stores essential details about a single commit
+type CommitInfo struct {
+	SHA     string `json:"sha"`
+	Author  string `json:"author"`
+	Date    string `json:"date"`
+	Message string `json:"message"` // first line only
+}
+
 // ReportMetadata contains metadata about a weekly report
 type ReportMetadata struct {
 	Authors      []string       `json:"authors"`
-	CommitSHAs   []string       `json:"commit_shas"`
+	CommitSHAs   []string       `json:"commit_shas"`   // kept for backwards compat
 	AuthorCounts map[string]int `json:"author_counts"`
+	Commits      []CommitInfo   `json:"commits"`
 }
 
 func buildReportMetadata(commits []git.Commit) ReportMetadata {
 	authorSet := make(map[string]bool)
 	authorCounts := make(map[string]int)
 	var shas []string
+	commitInfos := make([]CommitInfo, 0, len(commits))
 
 	for _, c := range commits {
 		authorSet[c.Author] = true
 		authorCounts[c.Author]++
 		shas = append(shas, c.SHA)
+
+		// Extract first line of commit message
+		msg := c.Message
+		if idx := strings.Index(msg, "\n"); idx > 0 {
+			msg = msg[:idx]
+		}
+
+		commitInfos = append(commitInfos, CommitInfo{
+			SHA:     c.SHA,
+			Author:  c.Author,
+			Date:    c.Date.Format("2006-01-02"),
+			Message: msg,
+		})
 	}
 
 	var authors []string
@@ -426,5 +450,6 @@ func buildReportMetadata(commits []git.Commit) ReportMetadata {
 		Authors:      authors,
 		CommitSHAs:   shas,
 		AuthorCounts: authorCounts,
+		Commits:      commitInfos,
 	}
 }

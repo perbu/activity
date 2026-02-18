@@ -363,13 +363,27 @@ func toReportDetail(r *db.WeeklyReport, repoName string) ReportDetail {
 		UpdatedAt:   r.UpdatedAt.Format("2006-01-02 15:04"),
 	}
 
-	// Parse authors from metadata
+	// Parse authors and commits from metadata
 	if r.Metadata.Valid && r.Metadata.String != "" {
 		var metadata struct {
 			Authors []string `json:"authors"`
+			Commits []struct {
+				SHA     string `json:"sha"`
+				Author  string `json:"author"`
+				Date    string `json:"date"`
+				Message string `json:"message"`
+			} `json:"commits"`
 		}
 		if err := json.Unmarshal([]byte(r.Metadata.String), &metadata); err == nil {
 			detail.Authors = metadata.Authors
+			for _, c := range metadata.Commits {
+				detail.Commits = append(detail.Commits, CommitView{
+					SHA:     c.SHA,
+					Author:  c.Author,
+					Date:    c.Date,
+					Message: c.Message,
+				})
+			}
 		}
 	}
 

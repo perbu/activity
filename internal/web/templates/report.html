@@ -62,6 +62,39 @@
         {{end}}
     </article>
 
+    {{if .Report.Commits}}
+    <section class="card commit-list-section">
+        <details>
+            <summary class="commit-list-header">
+                <h3>Commits</h3>
+                <span class="commit-list-count">{{len .Report.Commits}} commits</span>
+            </summary>
+            <div class="commit-list-content">
+                <table class="commit-table">
+                    <thead>
+                        <tr>
+                            <th>SHA</th>
+                            <th>Date</th>
+                            <th>Author</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .Report.Commits}}
+                        <tr>
+                            <td><code class="commit-sha">{{slice .SHA 0 7}}</code></td>
+                            <td class="commit-date">{{.Date}}</td>
+                            <td class="commit-author">{{.Author}}</td>
+                            <td class="commit-message">{{.Message}}</td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </details>
+    </section>
+    {{end}}
+
     {{if .AnalysisLogs}}
     <section class="card analysis-logs">
         <details>
@@ -184,6 +217,81 @@
     word-break: break-word;
     max-height: 400px;
     overflow-y: auto;
+}
+
+.commit-list-section {
+    grid-column: 2;
+    margin-top: 1rem;
+}
+
+.commit-list-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    cursor: pointer;
+    padding: 1rem;
+    user-select: none;
+}
+
+.commit-list-header h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.commit-list-count {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.commit-list-content {
+    padding: 0 1rem 1rem;
+    overflow-x: auto;
+}
+
+.commit-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+}
+
+.commit-table th {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 2px solid var(--border-color);
+    color: var(--text-muted);
+    font-weight: 500;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.commit-table td {
+    padding: 0.375rem 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: top;
+}
+
+.commit-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.commit-sha {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.commit-date {
+    white-space: nowrap;
+    color: var(--text-muted);
+}
+
+.commit-author {
+    white-space: nowrap;
+}
+
+.commit-message {
+    word-break: break-word;
 }
 </style>
 {{end}}

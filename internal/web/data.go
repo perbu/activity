@@ -27,6 +27,14 @@ type ReportSummary struct {
 	Preview     string // first line of summary, truncated
 }
 
+// CommitView is a view model for a single commit in the report detail
+type CommitView struct {
+	SHA     string
+	Author  string
+	Date    string
+	Message string
+}
+
 // ReportDetail is a full view model for a single report
 type ReportDetail struct {
 	ID          int64
@@ -39,6 +47,7 @@ type ReportDetail struct {
 	WeekEnd     string
 	CommitCount int
 	Authors     []string
+	Commits     []CommitView
 	AgentMode   bool
 	CreatedAt   string
 	UpdatedAt   string

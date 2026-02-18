@@ -286,6 +286,11 @@ func (c *Config) GetAgentSystemPromptForRepo(external, hasForge bool) string {
 
 // DefaultPhase2Prompt is the default prompt template for Phase 2 analysis
 const DefaultPhase2Prompt = `Please provide a concise summary of the development activity in this commit range.
+
+CRITICAL: Only report on data you have actually received. Do NOT invent or estimate
+PR counts, review statistics, merge counts, or collaboration metrics. If you have no
+PR/review data, do not mention PR or review activity at all.
+
 Focus on:
 1. Main features or changes implemented
 2. Bug fixes
@@ -368,6 +373,11 @@ const DefaultAgentSystemPrompt = `You are a Git commit analyzer that summarizes 
 
 Your goal is to produce a concise summary of what happened in this commit range.
 
+CRITICAL: Only report on data you have actually received. Do NOT invent or estimate
+PR counts, review statistics, merge counts, or collaboration metrics unless you have
+fetched this data using the available tools. If you have no PR/review data, do not
+mention PR or review activity at all.
+
 IMPORTANT GUIDELINES:
 1. First, review all commit messages provided in the user prompt
 2. If a commit message is CLEAR and DESCRIPTIVE (e.g., "Fix null pointer in user auth",
@@ -402,6 +412,11 @@ const DefaultAgentSystemPromptInternal = `You are a Git commit analyzer that sum
 
 Your goal is to produce a concise summary of what happened in this commit range.
 
+CRITICAL: Only report on data you have actually received. Do NOT invent or estimate
+PR counts, review statistics, merge counts, or collaboration metrics unless you have
+fetched this data using the available tools. If you have no PR/review data, do not
+mention PR or review activity at all.
+
 IMPORTANT GUIDELINES:
 1. First, review all commit messages provided in the user prompt
 2. If a commit message is CLEAR and DESCRIPTIVE (e.g., "Fix null pointer in user auth",
@@ -432,6 +447,11 @@ If you had to skip analyzing some commits due to limits, mention this briefly at
 const DefaultAgentSystemPromptInternalWithForge = `You are a Git commit analyzer that summarizes development activity.
 
 Your goal is to produce a concise summary of what happened in this commit range.
+
+CRITICAL: Only report on data you have actually received. Do NOT invent or estimate
+PR counts, review statistics, merge counts, or collaboration metrics unless you have
+fetched this data using the available tools. If you have no PR/review data, do not
+mention PR or review activity at all.
 
 IMPORTANT GUIDELINES:
 1. First, review all commit messages provided in the user prompt
