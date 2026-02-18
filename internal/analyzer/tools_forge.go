@@ -64,40 +64,15 @@ func (t *GetPRReviewsTool) Declaration() *genai.FunctionDeclaration {
 	}
 }
 
-// Run executes the tool
-func (t *GetPRReviewsTool) Run(ctx tool.Context, args any) (map[string]any, error) {
-	slog.Debug("tool call", "tool", "get_pr_reviews")
-
-	if t.forge == nil {
-		return map[string]any{
-			"message": "No forge configured for this repository - PR data unavailable.",
-		}, nil
-	}
-
-	prs, err := t.forge.ListMergedPRs(ctx, t.since, t.until)
-	if err != nil {
-		slog.Debug("PR fetch error", "error", err)
-		// Graceful degradation - don't fail the analysis
-		return map[string]any{
-			"error":   fmt.Sprintf("Unable to fetch PR data: %s", err.Error()),
-			"message": "PR data could not be fetched, proceed with commit data only.",
-		}, nil
-	}
-
+// FormatPRData formats PR and review data into a human-readable string, truncated to maxBytes.
+// Returns empty string if prs is empty.
+func FormatPRData(prs []forge.PRWithReviews, maxBytes int) string {
 	if len(prs) == 0 {
-		return map[string]any{
-			"message":  "No merged PRs found in this period.",
-			"pr_count": 0,
-		}, nil
+		return ""
 	}
 
-	// Build detailed summary
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Found %d merged PRs:\n\n", len(prs)))
-
-	// Track reviewers
-	reviewerCounts := make(map[string]int)
-	approvalCounts := make(map[string]int)
 
 	for _, pr := range prs {
 		sb.WriteString(fmt.Sprintf("PR #%d: %s\n", pr.PR.Number, pr.PR.Title))
@@ -113,31 +88,83 @@ func (t *GetPRReviewsTool) Run(ctx tool.Context, args any) (map[string]any, erro
 		if len(pr.Reviews) > 0 {
 			sb.WriteString("  Reviews:\n")
 			for _, r := range pr.Reviews {
-				reviewerCounts[r.Author]++
-				if r.State == forge.ReviewApproved {
-					approvalCounts[r.Author]++
-				}
-
 				sb.WriteString(fmt.Sprintf("    - %s: %s", r.Author, r.State))
 				if r.Body != "" {
-					// Truncate long comments
 					body := r.Body
-					if len(body) > 100 {
-						body = body[:100] + "..."
+					if len(body) > 200 {
+						body = body[:200] + "..."
 					}
-					// Clean up newlines for display
 					body = strings.ReplaceAll(body, "\n", " ")
 					sb.WriteString(fmt.Sprintf(" (%s)", body))
 				}
 				sb.WriteString("\n")
 			}
-		} else {
-			sb.WriteString("  No reviews\n")
 		}
+
+		if len(pr.Comments) > 0 {
+			sb.WriteString(fmt.Sprintf("  Discussion (%d comments):\n", len(pr.Comments)))
+			for _, c := range pr.Comments {
+				body := c.Body
+				if len(body) > 200 {
+					body = body[:200] + "..."
+				}
+				body = strings.ReplaceAll(body, "\n", " ")
+				sb.WriteString(fmt.Sprintf("    - %s: %s\n", c.Author, body))
+			}
+		}
+
 		sb.WriteString("\n")
+
+		if maxBytes > 0 && sb.Len() > maxBytes {
+			// Truncate and add notice
+			result := sb.String()[:maxBytes]
+			return result + "\n... [PR data truncated due to size limit]\n"
+		}
 	}
 
+	return sb.String()
+}
+
+// Run executes the tool
+func (t *GetPRReviewsTool) Run(ctx tool.Context, args any) (map[string]any, error) {
+	slog.Debug("tool call", "tool", "get_pr_reviews")
+
+	if t.forge == nil {
+		return map[string]any{
+			"message": "No forge configured for this repository - PR data unavailable.",
+		}, nil
+	}
+
+	prs, err := t.forge.ListMergedPRs(ctx, t.since, t.until)
+	if err != nil {
+		slog.Debug("PR fetch error", "error", err)
+		return map[string]any{
+			"error":   fmt.Sprintf("Unable to fetch PR data: %s", err.Error()),
+			"message": "PR data could not be fetched, proceed with commit data only.",
+		}, nil
+	}
+
+	if len(prs) == 0 {
+		return map[string]any{
+			"message":  "No merged PRs found in this period.",
+			"pr_count": 0,
+		}, nil
+	}
+
+	details := FormatPRData(prs, 0) // No truncation for tool calls
+
 	// Build reviewer summary
+	reviewerCounts := make(map[string]int)
+	approvalCounts := make(map[string]int)
+	for _, pr := range prs {
+		for _, r := range pr.Reviews {
+			reviewerCounts[r.Author]++
+			if r.State == forge.ReviewApproved {
+				approvalCounts[r.Author]++
+			}
+		}
+	}
+
 	var reviewerSummary []map[string]any
 	for reviewer, count := range reviewerCounts {
 		reviewerSummary = append(reviewerSummary, map[string]any{
@@ -149,7 +176,7 @@ func (t *GetPRReviewsTool) Run(ctx tool.Context, args any) (map[string]any, erro
 
 	return map[string]any{
 		"pr_count":   len(prs),
-		"details":    sb.String(),
+		"details":    details,
 		"reviewers":  reviewerSummary,
 		"forge_type": t.forge.Type(),
 	}, nil

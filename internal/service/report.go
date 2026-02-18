@@ -148,7 +148,7 @@ func (s *ReportService) GenerateSince(ctx context.Context, repoName string, sinc
 	}
 	defer llmClient.Close()
 
-	llmAnalyzer := analyzer.New(llmClient, s.db, s.cfg, s.tokenProvider)
+	llmAnalyzer := analyzer.New(llmClient, s.db, s.cfg)
 
 	result := &GenerateResult{RepoName: repoName}
 
@@ -316,7 +316,7 @@ func (s *ReportService) generateWeeklyReport(ctx context.Context, repo *db.Repos
 	}
 	defer llmClient.Close()
 
-	llmAnalyzer := analyzer.New(llmClient, s.db, s.cfg, s.tokenProvider)
+	llmAnalyzer := analyzer.New(llmClient, s.db, s.cfg)
 	return s.generateWeeklyReportWithAnalyzer(ctx, llmAnalyzer, repo, year, week, commits, branchActivity, exists)
 }
 

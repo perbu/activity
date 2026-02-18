@@ -4,6 +4,7 @@ go 1.25.3
 
 require (
 	github.com/bradleyfalzon/ghinstallation/v2 v2.17.0
+	github.com/google/go-github/v75 v75.0.0
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
 	github.com/pressly/goose/v3 v3.26.0
@@ -52,7 +53,6 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/go-github/v75 v75.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/safehtml v0.1.0 // indirect

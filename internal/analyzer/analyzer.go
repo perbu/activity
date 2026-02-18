@@ -5,30 +5,29 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/perbu/activity/internal/config"
 	"github.com/perbu/activity/internal/db"
+	"github.com/perbu/activity/internal/forge"
 	"github.com/perbu/activity/internal/git"
-	"github.com/perbu/activity/internal/github"
 	"github.com/perbu/activity/internal/llm"
 )
 
 type Analyzer struct {
-	llmClient     *llm.Client
-	db            *db.DB
-	config        *config.Config
-	tokenProvider *github.TokenProvider
+	llmClient *llm.Client
+	db        *db.DB
+	config    *config.Config
 }
 
 // New creates a new Analyzer
-func New(llmClient *llm.Client, database *db.DB, cfg *config.Config, tokenProvider *github.TokenProvider) *Analyzer {
+func New(llmClient *llm.Client, database *db.DB, cfg *config.Config) *Analyzer {
 	return &Analyzer{
-		llmClient:     llmClient,
-		db:            database,
-		config:        cfg,
-		tokenProvider: tokenProvider,
+		llmClient: llmClient,
+		db:        database,
+		config:    cfg,
 	}
 }
 
@@ -52,8 +51,32 @@ func (a *Analyzer) AnalyzeCommits(ctx context.Context, repo *db.Repository, comm
 
 // analyzeWithSimpleLLM performs simple LLM-based analysis (Phase 2)
 func (a *Analyzer) analyzeWithSimpleLLM(ctx context.Context, repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, previousSummary string, logger *AnalysisLogger) (string, error) {
+	// Pre-fetch PR data if forge is available
+	var prData string
+	f, err := forge.New(repo, a.config)
+	if err != nil {
+		slog.Debug("No forge client for simple LLM analysis", "repo", repo.Name, "error", err)
+	}
+	if f != nil && len(commits) > 0 {
+		since := commits[len(commits)-1].Date
+		until := commits[0].Date
+		prs, err := f.ListMergedPRs(ctx, since, until)
+		if err != nil {
+			slog.Warn("Failed to pre-fetch PR data for simple LLM", "repo", repo.Name, "error", err)
+		} else {
+			maxBytes := a.config.LLM.MaxPRDataSizeKB * 1024
+			prData = FormatPRData(prs, maxBytes)
+			if prData != "" {
+				slog.Info("pre-fetched PR data for prompt", "repo", repo.Name, "prs", len(prs), "bytes", len(prData))
+				if logger != nil {
+					logger.LogPRData(prData)
+				}
+			}
+		}
+	}
+
 	// Build prompt from commits
-	prompt := buildAnalysisPrompt(repo, commits, branchActivity, a.config, previousSummary)
+	prompt := buildAnalysisPrompt(repo, commits, branchActivity, a.config, previousSummary, prData)
 
 	// Log prompt if logger available
 	if logger != nil {
@@ -140,7 +163,7 @@ func (a *Analyzer) AnalyzeAndSave(ctx context.Context, repo *db.Repository, from
 }
 
 // buildAnalysisPrompt creates the prompt for LLM analysis
-func buildAnalysisPrompt(repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, cfg *config.Config, previousSummary string) string {
+func buildAnalysisPrompt(repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, cfg *config.Config, previousSummary string, prData string) string {
 	var sb strings.Builder
 
 	sb.WriteString("You are analyzing git commits for a software project.\n\n")
@@ -206,6 +229,14 @@ func buildAnalysisPrompt(repo *db.Repository, commits []git.Commit, branchActivi
 			sb.WriteString(")\n")
 		}
 		sb.WriteString("\nInclude a brief mention of this parallel work in your summary.\n\n")
+	}
+
+	// Include pre-fetched PR data
+	if prData != "" {
+		sb.WriteString("## Pull Requests\n")
+		sb.WriteString("Only report on information that is present; do NOT comment on the absence of reviews or discussion.\n\n")
+		sb.WriteString(prData)
+		sb.WriteString("\n")
 	}
 
 	// Include previous week's summary for context

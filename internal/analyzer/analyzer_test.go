@@ -111,7 +111,7 @@ func TestBuildAnalysisPrompt(t *testing.T) {
 	}
 
 	t.Run("basic prompt structure", func(t *testing.T) {
-		prompt := buildAnalysisPrompt(repo, commits, nil, cfg, "")
+		prompt := buildAnalysisPrompt(repo, commits, nil, cfg, "", "")
 
 		// Check that key elements are present
 		if !strings.Contains(prompt, "test-repo") {
@@ -141,7 +141,7 @@ func TestBuildAnalysisPrompt(t *testing.T) {
 			Description: sql.NullString{String: "A test repository for testing", Valid: true},
 		}
 
-		prompt := buildAnalysisPrompt(repoWithDesc, commits, nil, cfg, "")
+		prompt := buildAnalysisPrompt(repoWithDesc, commits, nil, cfg, "", "")
 
 		if !strings.Contains(prompt, "A test repository for testing") {
 			t.Error("prompt should contain repository description")
@@ -158,7 +158,7 @@ func TestBuildAnalysisPrompt(t *testing.T) {
 			},
 		}
 
-		prompt := buildAnalysisPrompt(repo, commits, branchActivity, cfg, "")
+		prompt := buildAnalysisPrompt(repo, commits, branchActivity, cfg, "", "")
 
 		if !strings.Contains(prompt, "Other Branch Activity") {
 			t.Error("prompt should contain branch activity section")
@@ -174,7 +174,7 @@ func TestBuildAnalysisPrompt(t *testing.T) {
 	t.Run("with previous summary", func(t *testing.T) {
 		previousSummary := "Last week the team focused on bug fixes and code refactoring."
 
-		prompt := buildAnalysisPrompt(repo, commits, nil, cfg, previousSummary)
+		prompt := buildAnalysisPrompt(repo, commits, nil, cfg, previousSummary, "")
 
 		if !strings.Contains(prompt, "Previous Week's Summary") {
 			t.Error("prompt should contain previous summary section header")
@@ -196,7 +196,7 @@ func TestBuildAnalysisPrompt(t *testing.T) {
 			}
 		}
 
-		prompt := buildAnalysisPrompt(repo, manyCommits, nil, cfg, "")
+		prompt := buildAnalysisPrompt(repo, manyCommits, nil, cfg, "", "")
 
 		// Should mention remaining commits
 		if !strings.Contains(prompt, "... and 10 more commits") {
@@ -208,7 +208,7 @@ func TestBuildAnalysisPrompt(t *testing.T) {
 func TestNewAnalyzer(t *testing.T) {
 	cfg := config.DefaultConfig()
 
-	analyzer := New(nil, nil, cfg, nil)
+	analyzer := New(nil, nil, cfg)
 
 	if analyzer == nil {
 		t.Error("New() returned nil")

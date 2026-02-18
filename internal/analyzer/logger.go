@@ -51,6 +51,15 @@ func (l *AnalysisLogger) LogResponse(content string) {
 	}
 }
 
+// LogPRData records the pre-fetched PR data included in the prompt
+func (l *AnalysisLogger) LogPRData(content string) {
+	seq := l.nextSequence()
+	_, err := l.db.CreateAnalysisLog(l.activityRunID, "pr_data", "", content, seq)
+	if err != nil {
+		slog.Warn("failed to log PR data", "error", err, "run_id", l.activityRunID)
+	}
+}
+
 // LogToolCall records a tool call made by the agent
 func (l *AnalysisLogger) LogToolCall(toolName string, args any) {
 	seq := l.nextSequence()

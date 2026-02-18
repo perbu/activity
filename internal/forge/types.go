@@ -33,8 +33,16 @@ type Review struct {
 	CreatedAt time.Time
 }
 
-// PRWithReviews combines a pull request with its reviews
+// Comment represents a discussion comment on a pull request
+type Comment struct {
+	Author    string
+	Body      string
+	CreatedAt time.Time
+}
+
+// PRWithReviews combines a pull request with its reviews and comments
 type PRWithReviews struct {
-	PR      PullRequest
-	Reviews []Review
+	PR       PullRequest
+	Reviews  []Review
+	Comments []Comment
 }

@@ -102,8 +102,9 @@ type LLMConfig struct {
 	// Phase 3: Agent-based analysis configuration
 	UseAgent       bool `yaml:"use_agent"`        // Enable agent-based analysis (default: false)
 	MaxDiffFetches int  `yaml:"max_diff_fetches"` // Max diffs agent can fetch per analysis (default: 5)
-	MaxDiffSizeKB  int  `yaml:"max_diff_size_kb"` // Max size of each diff in KB (default: 10)
-	MaxTotalTokens int  `yaml:"max_total_tokens"` // Max total tokens for agent session (default: 100000)
+	MaxDiffSizeKB    int  `yaml:"max_diff_size_kb"`    // Max size of each diff in KB (default: 10)
+	MaxPRDataSizeKB  int  `yaml:"max_pr_data_size_kb"` // Max size of pre-fetched PR data in KB (default: 50)
+	MaxTotalTokens   int  `yaml:"max_total_tokens"`    // Max total tokens for agent session (default: 100000)
 	EnableToolLogs bool `yaml:"enable_tool_logs"` // Enable detailed tool execution logs (default: true)
 
 	// Prompt customization (optional overrides)
@@ -131,8 +132,9 @@ func DefaultConfig() *Config {
 			// Phase 3: Agent mode (default) - intelligent diff fetching
 			UseAgent:       true,      // Agent mode by default (set false for Phase 2)
 			MaxDiffFetches: 20,        // Max 20 diffs per analysis
-			MaxDiffSizeKB:  50,        // Max 50KB per diff
-			MaxTotalTokens: 5000000,   // ~$0.50 cost limit
+			MaxDiffSizeKB:   50,        // Max 50KB per diff
+			MaxPRDataSizeKB: 50,        // Max 50KB of pre-fetched PR data
+			MaxTotalTokens:  5000000,   // ~$0.50 cost limit
 			EnableToolLogs: true,   // Enable logging for debugging
 		},
 		Newsletter: NewsletterConfig{

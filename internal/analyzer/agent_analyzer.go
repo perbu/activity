@@ -19,7 +19,7 @@ import (
 )
 
 // buildAgentPrompt creates the user prompt for the agent
-func buildAgentPrompt(repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, maxMessageLength int, previousSummary string) string {
+func buildAgentPrompt(repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, maxMessageLength int, previousSummary string, prData string) string {
 	var sb strings.Builder
 
 	sb.WriteString(fmt.Sprintf("Repository: %s\n", repo.Name))
@@ -66,6 +66,14 @@ func buildAgentPrompt(repo *db.Repository, commits []git.Commit, branchActivity 
 			sb.WriteString(")\n")
 		}
 		sb.WriteString("\nInclude a brief mention of this parallel work in your summary.\n\n")
+	}
+
+	// Include pre-fetched PR data
+	if prData != "" {
+		sb.WriteString("## Pull Requests and Reviews\n")
+		sb.WriteString("The following PR data was retrieved from the forge. Use this data directly in your analysis — do NOT call get_pr_reviews, as the data is already provided here. Only report on information that is present; do NOT comment on the absence of reviews or discussion.\n\n")
+		sb.WriteString(prData)
+		sb.WriteString("\n")
 	}
 
 	// Include previous week's summary for context
@@ -144,9 +152,27 @@ func (a *Analyzer) analyzeWithAgent(ctx context.Context, repo *db.Repository, co
 	}
 
 	// Create forge client for this repo (nil if not configured)
-	f, err := forge.New(repo, a.config, a.tokenProvider)
+	f, err := forge.New(repo, a.config)
 	if err != nil {
 		slog.Warn("Failed to create forge client, continuing without PR data", "repo", repo.Name, "error", err)
+	}
+
+	// Pre-fetch PR data so it's included directly in the prompt
+	var prData string
+	if f != nil {
+		prs, err := f.ListMergedPRs(ctx, since, until)
+		if err != nil {
+			slog.Warn("Failed to pre-fetch PR data, agent can still use tool", "repo", repo.Name, "error", err)
+		} else {
+			maxBytes := a.config.LLM.MaxPRDataSizeKB * 1024
+			prData = FormatPRData(prs, maxBytes)
+			if prData != "" {
+				slog.Info("pre-fetched PR data for prompt", "repo", repo.Name, "prs", len(prs), "bytes", len(prData))
+				if logger != nil {
+					logger.LogPRData(prData)
+				}
+			}
+		}
 	}
 
 	agt, err := a.createAnalyzerAgent(ctx, repo, repoPath, costTracker, f, since, until, logger)
@@ -155,7 +181,7 @@ func (a *Analyzer) analyzeWithAgent(ctx context.Context, repo *db.Repository, co
 	}
 
 	// Build user prompt
-	userPrompt := buildAgentPrompt(repo, commits, branchActivity, a.config.LLM.MaxMessageLength, previousSummary)
+	userPrompt := buildAgentPrompt(repo, commits, branchActivity, a.config.LLM.MaxMessageLength, previousSummary, prData)
 
 	// Log prompt if logger available
 	if logger != nil {

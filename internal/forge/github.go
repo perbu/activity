@@ -2,40 +2,40 @@ package forge
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
+	"log/slog"
 	"net/http"
-	"net/url"
 	"time"
 
-	"golang.org/x/time/rate"
-
-	"github.com/perbu/activity/internal/github"
+	gh "github.com/google/go-github/v75/github"
 )
 
 // GitHub implements the Forge interface for GitHub repositories
 type GitHub struct {
-	owner         string
-	repo          string
-	tokenProvider *github.TokenProvider
-	limiter       *rate.Limiter
-	client        *http.Client
+	owner  string
+	repo   string
+	client *gh.Client
 }
 
-// NewGitHub creates a new GitHub forge client
-func NewGitHub(owner, repo string, tokenProvider *github.TokenProvider) (*GitHub, error) {
+// NewGitHub creates a new GitHub forge client.
+// Pass an *http.Client with ghinstallation transport for authenticated access,
+// or nil for unauthenticated (public repos).
+func NewGitHub(owner, repo string, httpClient *http.Client) (*GitHub, error) {
 	if owner == "" || repo == "" {
 		return nil, fmt.Errorf("owner and repo are required")
 	}
 
+	var client *gh.Client
+	if httpClient != nil {
+		client = gh.NewClient(httpClient)
+	} else {
+		client = gh.NewClient(nil)
+	}
+
 	return &GitHub{
-		owner:         owner,
-		repo:          repo,
-		tokenProvider: tokenProvider,
-		// 10 requests per second = 36000/hr, well under 5000/hr limit
-		limiter: rate.NewLimiter(rate.Every(100*time.Millisecond), 1),
-		client:  &http.Client{Timeout: 30 * time.Second},
+		owner:  owner,
+		repo:   repo,
+		client: client,
 	}, nil
 }
 
@@ -44,23 +44,27 @@ func (g *GitHub) Type() string { return "github" }
 
 // ListMergedPRs returns PRs merged in the given time range with their reviews
 func (g *GitHub) ListMergedPRs(ctx context.Context, since, until time.Time) ([]PRWithReviews, error) {
-	// Search for merged PRs in the date range
 	prs, err := g.searchMergedPRs(ctx, since, until)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search PRs: %w", err)
 	}
 
-	// Fetch reviews for each PR
 	var result []PRWithReviews
 	for _, pr := range prs {
 		reviews, err := g.getReviews(ctx, pr.Number)
 		if err != nil {
-			// Log but continue - don't fail the whole operation for one PR
+			slog.Warn("failed to fetch reviews", "pr", pr.Number, "error", err)
 			reviews = nil
 		}
+		comments, err := g.getComments(ctx, pr.Number)
+		if err != nil {
+			slog.Warn("failed to fetch comments", "pr", pr.Number, "error", err)
+			comments = nil
+		}
 		result = append(result, PRWithReviews{
-			PR:      pr,
-			Reviews: reviews,
+			PR:       pr,
+			Reviews:  reviews,
+			Comments: comments,
 		})
 	}
 
@@ -69,75 +73,30 @@ func (g *GitHub) ListMergedPRs(ctx context.Context, since, until time.Time) ([]P
 
 // searchMergedPRs uses the GitHub search API to find merged PRs
 func (g *GitHub) searchMergedPRs(ctx context.Context, since, until time.Time) ([]PullRequest, error) {
-	if err := g.limiter.Wait(ctx); err != nil {
-		return nil, err
-	}
-
-	// Build search query: merged PRs in date range
 	query := fmt.Sprintf("repo:%s/%s is:pr is:merged merged:%s..%s",
 		g.owner, g.repo,
 		since.Format("2006-01-02"),
 		until.Format("2006-01-02"))
 
-	reqURL := fmt.Sprintf("https://api.github.com/search/issues?q=%s&per_page=100",
-		url.QueryEscape(query))
+	opts := &gh.SearchOptions{
+		ListOptions: gh.ListOptions{PerPage: 100},
+	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	searchResult, _, err := g.client.Search.Issues(ctx, query, opts)
 	if err != nil {
-		return nil, err
-	}
-
-	// Add auth header if token provider is available
-	if g.tokenProvider != nil {
-		token, err := g.tokenProvider.GetToken()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get token: %w", err)
-		}
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-	resp, err := g.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("GitHub API error: %s - %s", resp.Status, string(body))
-	}
-
-	var searchResult struct {
-		Items []struct {
-			Number int    `json:"number"`
-			Title  string `json:"title"`
-			User   struct {
-				Login string `json:"login"`
-			} `json:"user"`
-			HTMLURL     string `json:"html_url"`
-			PullRequest struct {
-				MergedAt string `json:"merged_at"`
-			} `json:"pull_request"`
-		} `json:"items"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&searchResult); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+		return nil, fmt.Errorf("GitHub search failed: %w", err)
 	}
 
 	var prs []PullRequest
-	for _, item := range searchResult.Items {
+	for _, item := range searchResult.Issues {
 		pr := PullRequest{
-			Number: item.Number,
-			Title:  item.Title,
-			Author: item.User.Login,
-			URL:    item.HTMLURL,
+			Number: item.GetNumber(),
+			Title:  item.GetTitle(),
+			Author: item.GetUser().GetLogin(),
+			URL:    item.GetHTMLURL(),
 		}
 
-		// Fetch additional PR details (merged_by, commits)
-		details, err := g.getPRDetails(ctx, item.Number)
+		details, err := g.getPRDetails(ctx, item.GetNumber())
 		if err == nil {
 			pr.MergedAt = details.MergedAt
 			pr.MergedBy = details.MergedBy
@@ -159,59 +118,20 @@ type prDetails struct {
 
 // getPRDetails fetches additional details for a PR
 func (g *GitHub) getPRDetails(ctx context.Context, number int) (*prDetails, error) {
-	if err := g.limiter.Wait(ctx); err != nil {
-		return nil, err
-	}
-
-	reqURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls/%d",
-		g.owner, g.repo, number)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	pr, _, err := g.client.PullRequests.Get(ctx, g.owner, g.repo, number)
 	if err != nil {
-		return nil, err
-	}
-
-	if g.tokenProvider != nil {
-		token, err := g.tokenProvider.GetToken()
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-	resp, err := g.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get PR details: %s", resp.Status)
-	}
-
-	var pr struct {
-		MergedAt string `json:"merged_at"`
-		MergedBy *struct {
-			Login string `json:"login"`
-		} `json:"merged_by"`
-		MergeCommitSHA string `json:"merge_commit_sha"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get PR details: %w", err)
 	}
 
 	details := &prDetails{}
-	if pr.MergedAt != "" {
-		details.MergedAt, _ = time.Parse(time.RFC3339, pr.MergedAt)
+	if pr.MergedAt != nil {
+		details.MergedAt = pr.MergedAt.Time
 	}
 	if pr.MergedBy != nil {
-		details.MergedBy = pr.MergedBy.Login
+		details.MergedBy = pr.MergedBy.GetLogin()
 	}
-	if pr.MergeCommitSHA != "" {
-		details.Commits = []string{pr.MergeCommitSHA}
+	if pr.MergeCommitSHA != nil {
+		details.Commits = []string{*pr.MergeCommitSHA}
 	}
 
 	return details, nil
@@ -219,66 +139,52 @@ func (g *GitHub) getPRDetails(ctx context.Context, number int) (*prDetails, erro
 
 // getReviews fetches reviews for a PR
 func (g *GitHub) getReviews(ctx context.Context, number int) ([]Review, error) {
-	if err := g.limiter.Wait(ctx); err != nil {
-		return nil, err
-	}
-
-	reqURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls/%d/reviews",
-		g.owner, g.repo, number)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	opts := &gh.ListOptions{PerPage: 100}
+	ghReviews, _, err := g.client.PullRequests.ListReviews(ctx, g.owner, g.repo, number, opts)
 	if err != nil {
-		return nil, err
-	}
-
-	if g.tokenProvider != nil {
-		token, err := g.tokenProvider.GetToken()
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-	resp, err := g.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get reviews: %s", resp.Status)
-	}
-
-	var ghReviews []struct {
-		User struct {
-			Login string `json:"login"`
-		} `json:"user"`
-		State       string `json:"state"`
-		Body        string `json:"body"`
-		SubmittedAt string `json:"submitted_at"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&ghReviews); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get reviews: %w", err)
 	}
 
 	var reviews []Review
 	for _, r := range ghReviews {
 		review := Review{
 			PRNumber: number,
-			Author:   r.User.Login,
-			State:    mapGitHubReviewState(r.State),
-			Body:     r.Body,
+			Author:   r.GetUser().GetLogin(),
+			State:    mapGitHubReviewState(r.GetState()),
+			Body:     r.GetBody(),
 		}
-		if r.SubmittedAt != "" {
-			review.CreatedAt, _ = time.Parse(time.RFC3339, r.SubmittedAt)
+		if r.SubmittedAt != nil {
+			review.CreatedAt = r.SubmittedAt.Time
 		}
 		reviews = append(reviews, review)
 	}
 
 	return reviews, nil
+}
+
+// getComments fetches issue comments (discussion) for a PR
+func (g *GitHub) getComments(ctx context.Context, number int) ([]Comment, error) {
+	opts := &gh.IssueListCommentsOptions{
+		ListOptions: gh.ListOptions{PerPage: 100},
+	}
+	ghComments, _, err := g.client.Issues.ListComments(ctx, g.owner, g.repo, number, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get comments: %w", err)
+	}
+
+	var comments []Comment
+	for _, c := range ghComments {
+		comment := Comment{
+			Author: c.GetUser().GetLogin(),
+			Body:   c.GetBody(),
+		}
+		if c.CreatedAt != nil {
+			comment.CreatedAt = c.CreatedAt.Time
+		}
+		comments = append(comments, comment)
+	}
+
+	return comments, nil
 }
 
 // mapGitHubReviewState maps GitHub review states to our ReviewState type

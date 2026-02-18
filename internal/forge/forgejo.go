@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -64,16 +65,22 @@ func (f *Forgejo) ListMergedPRs(ctx context.Context, since, until time.Time) ([]
 			continue
 		}
 
-		// Fetch reviews
+		// Fetch reviews and comments
 		reviews, err := f.getReviews(ctx, pr.Number)
 		if err != nil {
-			// Log but continue
+			slog.Warn("failed to fetch reviews", "pr", pr.Number, "error", err)
 			reviews = nil
+		}
+		comments, err := f.getComments(ctx, pr.Number)
+		if err != nil {
+			slog.Warn("failed to fetch comments", "pr", pr.Number, "error", err)
+			comments = nil
 		}
 
 		result = append(result, PRWithReviews{
-			PR:      pr,
-			Reviews: reviews,
+			PR:       pr,
+			Reviews:  reviews,
+			Comments: comments,
 		})
 	}
 
@@ -230,6 +237,62 @@ func (f *Forgejo) getReviews(ctx context.Context, number int) ([]Review, error) 
 	}
 
 	return reviews, nil
+}
+
+// getComments fetches issue comments (discussion) for a PR
+func (f *Forgejo) getComments(ctx context.Context, number int) ([]Comment, error) {
+	if err := f.limiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+
+	reqURL := fmt.Sprintf("%s/api/v1/repos/%s/%s/issues/%d/comments",
+		f.baseURL, f.owner, f.repo, number)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if f.token != "" {
+		req.Header.Set("Authorization", "token "+f.token)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := f.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get comments: %s", resp.Status)
+	}
+
+	var forgejoComments []struct {
+		User struct {
+			Login string `json:"login"`
+		} `json:"user"`
+		Body      string `json:"body"`
+		CreatedAt string `json:"created_at"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&forgejoComments); err != nil {
+		return nil, err
+	}
+
+	var comments []Comment
+	for _, c := range forgejoComments {
+		comment := Comment{
+			Author: c.User.Login,
+			Body:   c.Body,
+		}
+		if c.CreatedAt != "" {
+			comment.CreatedAt, _ = time.Parse(time.RFC3339, c.CreatedAt)
+		}
+		comments = append(comments, comment)
+	}
+
+	return comments, nil
 }
 
 // mapForgejoReviewState maps Forgejo/Gitea review states to our ReviewState type
