@@ -64,21 +64,21 @@ func (s *AdminService) List() ([]*db.Admin, error) {
 	return s.db.ListAdmins()
 }
 
-// SeedIfNeeded creates the seed admin if no admins exist
+// SeedIfNeeded ensures the seed admin exists in the database
 func (s *AdminService) SeedIfNeeded() error {
-	count, err := s.db.AdminCount()
-	if err != nil {
-		return fmt.Errorf("failed to count admins: %w", err)
-	}
-
-	if count > 0 {
-		return nil // Admins already exist
-	}
-
 	seedEmail := s.cfg.GetSeedAdmin()
 	if seedEmail == "" {
-		slog.Warn("No admins configured and no seed_admin specified")
+		slog.Warn("No seed_admin specified")
 		return nil
+	}
+
+	isAdmin, err := s.db.IsAdmin(seedEmail)
+	if err != nil {
+		return fmt.Errorf("failed to check seed admin: %w", err)
+	}
+
+	if isAdmin {
+		return nil // Seed admin already exists
 	}
 
 	admin, err := s.db.CreateAdmin(seedEmail, "system")
