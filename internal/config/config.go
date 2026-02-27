@@ -83,6 +83,7 @@ type GitHubConfig struct {
 // NewsletterConfig represents newsletter email configuration
 type NewsletterConfig struct {
 	Enabled        bool   `yaml:"enabled"`
+	AutoSend       bool   `yaml:"auto_send"`            // Automatically send newsletters Monday 02:42
 	SendGridAPIKey string `yaml:"sendgrid_api_key"`     // Direct API key
 	SendGridKeyEnv string `yaml:"sendgrid_api_key_env"` // Environment variable name
 	FromEmail      string `yaml:"from_email"`

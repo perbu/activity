@@ -23,6 +23,7 @@ type Templates struct {
 	adminSubscribers *template.Template
 	adminActions     *template.Template
 	adminAdmins      *template.Template
+	subscriptions    *template.Template
 }
 
 // StaticFS returns the embedded static files filesystem
@@ -92,6 +93,11 @@ func ParseTemplates() (*Templates, error) {
 		return nil, err
 	}
 
+	subscriptions, err := template.Must(base.Clone()).ParseFS(templateFS, "templates/subscriptions.html")
+	if err != nil {
+		return nil, err
+	}
+
 	return &Templates{
 		index:            index,
 		repos:            repos,
@@ -102,5 +108,6 @@ func ParseTemplates() (*Templates, error) {
 		adminSubscribers: adminSubscribers,
 		adminActions:     adminActions,
 		adminAdmins:      adminAdmins,
+		subscriptions:    subscriptions,
 	}, nil
 }

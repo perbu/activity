@@ -12,6 +12,7 @@ import (
 
 	"github.com/perbu/activity/internal/config"
 	"github.com/perbu/activity/internal/db"
+	"github.com/perbu/activity/internal/scheduler"
 	"github.com/perbu/activity/internal/service"
 )
 
@@ -100,6 +101,11 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /repos/{name}", s.handleRepoReports)
 	s.mux.HandleFunc("GET /reports/{id}", s.handleReportView)
 
+	// Subscription routes (require authentication)
+	s.mux.HandleFunc("GET /subscriptions", RequireAuth(s.handleSubscriptions))
+	s.mux.HandleFunc("POST /subscriptions/toggle", RequireAuth(s.handleSubscriptionToggle))
+	s.mux.HandleFunc("POST /subscriptions/toggle-all", RequireAuth(s.handleSubscriptionToggleAll))
+
 	// Admin routes (require admin privileges)
 	s.mux.HandleFunc("GET /admin", RequireAdmin(s.handleAdmin))
 	s.mux.HandleFunc("GET /admin/repos", RequireAdmin(s.handleAdminRepos))
@@ -136,6 +142,10 @@ func (s *Server) Start() error {
 	// Listen for shutdown signals
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// Start newsletter auto-send scheduler
+	sched := scheduler.New(s.services, s.cfg)
+	go sched.Run(ctx)
 
 	// Start server in a goroutine
 	errCh := make(chan error, 1)

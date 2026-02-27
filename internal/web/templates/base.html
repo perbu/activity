@@ -14,8 +14,11 @@
         <div class="nav-inner">
             <a href="/" class="nav-brand">activity</a>
             <div class="nav-links">
-                <a href="/" class="nav-link {{if eq .ActiveNav "dashboard"}}active{{end}}">dashboard</a>
+                <a href="/" class="nav-link {{if eq .ActiveNav "reports"}}active{{end}}">reports</a>
                 <a href="/repos" class="nav-link {{if eq .ActiveNav "repos"}}active{{end}}">repos</a>
+                {{if .User}}
+                <a href="/subscriptions" class="nav-link {{if eq .ActiveNav "subscriptions"}}active{{end}}">subscriptions</a>
+                {{end}}
                 {{if and .User .User.IsAdmin}}
                 <a href="/admin" class="nav-link {{if eq .ActiveNav "admin"}}active{{end}}">admin</a>
                 {{end}}

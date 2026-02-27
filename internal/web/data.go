@@ -5,7 +5,7 @@ import "html/template"
 // PageData is the common data structure for all pages
 type PageData struct {
 	Title      string
-	ActiveNav  string // "dashboard", "repos", "admin", ""
+	ActiveNav  string // "reports", "repos", "subscriptions", "admin", ""
 	Content    any
 	Error      string
 	CurrentURL string
@@ -152,6 +152,19 @@ type AdminSummary struct {
 	Email     string
 	CreatedAt string
 	CreatedBy string
+}
+
+// SubscriptionsPageData is the view model for the self-service subscriptions page
+type SubscriptionsPageData struct {
+	SubscribeAll bool
+	Repos        []SubscriptionRepoView
+}
+
+// SubscriptionRepoView represents a single repo row in the subscriptions page
+type SubscriptionRepoView struct {
+	ID         int64
+	Name       string
+	Subscribed bool
 }
 
 // AdminActionsData is the view model for admin actions page

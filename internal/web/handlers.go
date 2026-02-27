@@ -42,8 +42,8 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := PageData{
-		Title:     "Dashboard",
-		ActiveNav: "dashboard",
+		Title:     "Reports",
+		ActiveNav: "reports",
 		User:      GetUser(r),
 		Content: DashboardData{
 			Reports:    summaries,

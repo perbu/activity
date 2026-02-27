@@ -1,0 +1,180 @@
+{{define "content"}}
+<div class="subscriptions-page">
+    <div class="page-header">
+        <h1>Newsletter Subscriptions</h1>
+    </div>
+
+    <div class="subscribe-all-section">
+        <form action="/subscriptions/toggle-all" method="POST" class="subscribe-all-form">
+            <label class="toggle-label">
+                <input type="checkbox" name="subscribe_all" {{if .Content.SubscribeAll}}checked{{end}} onchange="this.form.submit()">
+                <span>Subscribe to all repositories</span>
+            </label>
+            <noscript><button type="submit" class="btn">Save</button></noscript>
+        </form>
+        <p class="subscribe-all-hint">When enabled, you'll receive newsletters for all repositories including newly added ones.</p>
+    </div>
+
+    <div class="list-section">
+        <h2>Repositories ({{len .Content.Repos}})</h2>
+        {{if .Content.Repos}}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Repository</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Content.Repos}}
+                <tr>
+                    <td><a href="/repos/{{.Name}}">{{.Name}}</a></td>
+                    <td>
+                        {{if $.Content.SubscribeAll}}
+                        <span class="status-all">all</span>
+                        {{else if .Subscribed}}
+                        <span class="status-subscribed">subscribed</span>
+                        {{else}}
+                        <span class="status-not">not subscribed</span>
+                        {{end}}
+                    </td>
+                    <td class="actions-cell">
+                        {{if not $.Content.SubscribeAll}}
+                        <form action="/subscriptions/toggle" method="POST" class="inline-form">
+                            <input type="hidden" name="repo_name" value="{{.Name}}">
+                            {{if .Subscribed}}
+                            <input type="hidden" name="action" value="unsubscribe">
+                            <button type="submit" class="btn-small btn-danger">unsubscribe</button>
+                            {{else}}
+                            <input type="hidden" name="action" value="subscribe">
+                            <button type="submit" class="btn-small btn-subscribe">subscribe</button>
+                            {{end}}
+                        </form>
+                        {{end}}
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="empty-state">No active repositories.</p>
+        {{end}}
+    </div>
+</div>
+
+<style>
+.page-header {
+    margin-bottom: 2rem;
+}
+
+.subscribe-all-section {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.subscribe-all-form {
+    margin-bottom: 0.5rem;
+}
+
+.toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.subscribe-all-hint {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    margin: 0;
+}
+
+.list-section h2 {
+    margin-bottom: 1rem;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.data-table th {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+.data-table td a {
+    color: var(--accent);
+}
+
+.status-all {
+    color: var(--accent);
+}
+
+.status-subscribed {
+    color: var(--accent);
+}
+
+.status-not {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.actions-cell {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.inline-form {
+    display: inline;
+}
+
+.btn {
+    padding: 0.5rem 1rem;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.btn-small {
+    padding: 0.25rem 0.5rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.75rem;
+}
+
+.btn-subscribe:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.btn-danger:hover {
+    border-color: #ff6b6b;
+    color: #ff6b6b;
+}
+
+.empty-state {
+    color: var(--text-muted);
+    text-align: center;
+    padding: 2rem;
+}
+</style>
+{{end}}

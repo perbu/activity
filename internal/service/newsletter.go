@@ -127,6 +127,34 @@ func (s *NewsletterService) GetSubscriptions(subscriberID int64) ([]*db.Subscrip
 	return s.db.ListSubscriptionsBySubscriber(subscriberID)
 }
 
+// GetOrCreateSubscriber looks up a subscriber by email; creates one with subscribe_all=false if not found
+func (s *NewsletterService) GetOrCreateSubscriber(email string) (*db.Subscriber, error) {
+	sub, err := s.db.GetSubscriberByEmail(email)
+	if err == nil {
+		return sub, nil
+	}
+	sub, err = s.db.CreateSubscriber(email, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create subscriber: %w", err)
+	}
+	slog.Info("Auto-created subscriber", "email", email)
+	return sub, nil
+}
+
+// SetSubscribeAll updates the subscribe_all flag for a subscriber
+func (s *NewsletterService) SetSubscribeAll(email string, subscribeAll bool) error {
+	sub, err := s.db.GetSubscriberByEmail(email)
+	if err != nil {
+		return fmt.Errorf("subscriber not found: %s", email)
+	}
+	sub.SubscribeAll = subscribeAll
+	if err := s.db.UpdateSubscriber(sub); err != nil {
+		return fmt.Errorf("failed to update subscriber: %w", err)
+	}
+	slog.Info("Updated subscribe_all", "email", email, "subscribe_all", subscribeAll)
+	return nil
+}
+
 // SendResult contains the result of sending newsletters
 type SendResult struct {
 	Sent             int
