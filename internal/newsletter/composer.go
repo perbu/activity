@@ -21,15 +21,29 @@ func NewComposer(database *db.DB, subjectPrefix string) *Composer {
 	}
 }
 
-// ComposeForSubscriber builds a newsletter email for a subscriber based on unsent activity runs
+// ComposeForSubscriber builds a newsletter email for a subscriber based on unsent activity runs.
+// When multiple runs exist for the same repo, only the most recent run is included.
+// The caller (sender) is still responsible for marking all runs as sent.
 func (c *Composer) ComposeForSubscriber(subscriber *db.Subscriber, runs []*db.ActivityRun) (*email.Email, error) {
 	if len(runs) == 0 {
 		return nil, nil
 	}
 
-	// Build sections for each run
-	sections := make([]RepoSection, 0, len(runs))
+	// Deduplicate runs by repo, keeping only the most recent per repo.
+	// Runs are ordered by completed_at DESC, so the first seen per repo is the latest.
+	seen := make(map[int64]bool)
+	var latestRuns []*db.ActivityRun
 	for _, run := range runs {
+		if seen[run.RepoID] {
+			continue
+		}
+		seen[run.RepoID] = true
+		latestRuns = append(latestRuns, run)
+	}
+
+	// Build sections for each repo (one per repo)
+	sections := make([]RepoSection, 0, len(latestRuns))
+	for _, run := range latestRuns {
 		// Get repo info
 		repo, err := c.db.GetRepository(run.RepoID)
 		if err != nil {
