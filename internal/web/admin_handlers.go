@@ -534,7 +534,10 @@ func (s *Server) handleAdminUpdateReposStream(w http.ResponseWriter, r *http.Req
 		flusher.Flush()
 	}
 
-	ctx := progress.WithProgressSink(r.Context(), sink)
+	// Use background context so work completes even if the HTTP connection drops
+	// (e.g. reverse proxy timeout). The progress sink may fail to write but the
+	// underlying operation will finish.
+	ctx := progress.WithProgressSink(context.Background(), sink)
 	results, err := s.services.Repo.UpdateAll(ctx)
 
 	if err != nil {
@@ -577,7 +580,10 @@ func (s *Server) handleAdminGenerateReportStream(w http.ResponseWriter, r *http.
 		flusher.Flush()
 	}
 
-	ctx := progress.WithProgressSink(r.Context(), sink)
+	// Use background context so work completes even if the HTTP connection drops
+	// (e.g. reverse proxy timeout). The progress sink may fail to write but the
+	// underlying operation will finish.
+	ctx := progress.WithProgressSink(context.Background(), sink)
 	results, err := s.services.Report.GenerateLastNWeeks(ctx, weeksBack, force)
 
 	if err != nil {
@@ -627,7 +633,10 @@ func (s *Server) handleAdminSendNewsletterStream(w http.ResponseWriter, r *http.
 		flusher.Flush()
 	}
 
-	ctx := progress.WithProgressSink(r.Context(), sink)
+	// Use background context so work completes even if the HTTP connection drops
+	// (e.g. reverse proxy timeout). The progress sink may fail to write but the
+	// underlying operation will finish.
+	ctx := progress.WithProgressSink(context.Background(), sink)
 	result, err := s.services.Newsletter.SendLastWeek(ctx, dryRun, os.Stdout)
 
 	if err != nil {
