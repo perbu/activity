@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -20,7 +21,17 @@ type Config struct {
 	Newsletter NewsletterConfig `yaml:"newsletter"`
 	GitHub     GitHubConfig     `yaml:"github"`
 	Web        WebConfig        `yaml:"web"`
+	Schedule   ScheduleConfig   `yaml:"schedule"`
 	Forgejo    []ForgejoConfig  `yaml:"forgejo"` // Forgejo/Gitea instances
+}
+
+// ScheduleConfig represents the weekly automation pipeline configuration
+type ScheduleConfig struct {
+	Enabled       bool `yaml:"enabled"`        // Enable the weekly pipeline (update repos, generate reports, send newsletter)
+	Day           string `yaml:"day"`           // Day of week to run (default: "monday")
+	Hour          int  `yaml:"hour"`            // Hour to run, 0-23 (default: 2)
+	Minute        int  `yaml:"minute"`          // Minute to run, 0-59 (default: 42)
+	NotifyAdmins  bool `yaml:"notify_admins"`   // Email admins on pipeline errors (default: true)
 }
 
 // ForgejoConfig represents configuration for a Forgejo/Gitea instance
@@ -154,6 +165,12 @@ func DefaultConfig() *Config {
 			AuthHeader: "oidc-email",
 			DevUser:    "dev@localhost",
 		},
+		Schedule: ScheduleConfig{
+			Day:          "monday",
+			Hour:         2,
+			Minute:       42,
+			NotifyAdmins: true,
+		},
 	}
 }
 
@@ -285,6 +302,34 @@ func (c *Config) GetAgentSystemPromptForRepo(external, hasForge bool) string {
 		return DefaultAgentSystemPromptInternalWithForge
 	}
 	return DefaultAgentSystemPromptInternal
+}
+
+// GetScheduleDay returns the configured day of week, defaulting to Monday
+func (c *Config) GetScheduleDay() time.Weekday {
+	switch strings.ToLower(c.Schedule.Day) {
+	case "sunday":
+		return time.Sunday
+	case "monday":
+		return time.Monday
+	case "tuesday":
+		return time.Tuesday
+	case "wednesday":
+		return time.Wednesday
+	case "thursday":
+		return time.Thursday
+	case "friday":
+		return time.Friday
+	case "saturday":
+		return time.Saturday
+	default:
+		return time.Monday
+	}
+}
+
+// ScheduleEnabled returns true if the scheduled pipeline should run.
+// This is true if schedule.enabled is set, or if newsletter.auto_send is set (backward compat).
+func (c *Config) ScheduleEnabled() bool {
+	return c.Schedule.Enabled || c.Newsletter.AutoSend
 }
 
 // DefaultPhase2Prompt is the default prompt template for Phase 2 analysis

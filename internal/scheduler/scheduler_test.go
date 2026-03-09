@@ -3,10 +3,16 @@ package scheduler
 import (
 	"testing"
 	"time"
+
+	"github.com/perbu/activity/internal/config"
 )
 
 func TestNextFireTime(t *testing.T) {
 	loc := time.UTC
+
+	// Default config: Monday at 02:42
+	cfg := config.DefaultConfig()
+	sched := &Scheduler{cfg: cfg}
 
 	tests := []struct {
 		name string
@@ -52,7 +58,7 @@ func TestNextFireTime(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := nextFireTime(tt.now)
+			got := sched.nextFireTime(tt.now)
 			if !got.Equal(tt.want) {
 				t.Errorf("nextFireTime(%v) = %v, want %v", tt.now, got, tt.want)
 			}
@@ -63,5 +69,22 @@ func TestNextFireTime(t *testing.T) {
 				t.Errorf("nextFireTime(%v) = %v, not strictly after now", tt.now, got)
 			}
 		})
+	}
+}
+
+func TestNextFireTimeCustomDay(t *testing.T) {
+	loc := time.UTC
+	cfg := config.DefaultConfig()
+	cfg.Schedule.Day = "wednesday"
+	cfg.Schedule.Hour = 9
+	cfg.Schedule.Minute = 0
+	sched := &Scheduler{cfg: cfg}
+
+	// Monday -> next Wednesday at 09:00
+	now := time.Date(2026, 3, 2, 12, 0, 0, 0, loc) // Monday
+	got := sched.nextFireTime(now)
+	want := time.Date(2026, 3, 4, 9, 0, 0, 0, loc) // Wednesday
+	if !got.Equal(want) {
+		t.Errorf("nextFireTime(%v) = %v, want %v", now, got, want)
 	}
 }

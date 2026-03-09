@@ -88,6 +88,12 @@ llm:
 newsletter:
   enabled: true
   sendgrid_api_key_env: SENDGRID_API_KEY
+schedule:
+  enabled: true              # Run weekly pipeline (update repos, generate reports, send newsletter)
+  day: monday                # Day of week (default: monday)
+  hour: 2                    # Hour, 0-23 (default: 2)
+  minute: 42                 # Minute, 0-59 (default: 42)
+  notify_admins: true        # Email admins on pipeline errors (default: true)
 ```
 
 The database DSN can also be provided via the `DATABASE_URL` environment variable.

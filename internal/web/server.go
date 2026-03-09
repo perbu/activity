@@ -143,8 +143,8 @@ func (s *Server) Start() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Start newsletter auto-send scheduler
-	sched := scheduler.New(s.services, s.cfg)
+	// Start scheduled pipeline (update repos, generate reports, send newsletter)
+	sched := scheduler.New(s.services, s.cfg, s.db)
 	go sched.Run(ctx)
 
 	// Start server in a goroutine
