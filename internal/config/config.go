@@ -75,10 +75,11 @@ type DatabaseConfig struct {
 
 // WebConfig represents web server and authentication configuration
 type WebConfig struct {
-	AuthHeader string `yaml:"auth_header"` // HTTP header containing user email (default: "oidc-email")
-	SeedAdmin  string `yaml:"seed_admin"`  // First admin email to create on startup
-	DevMode    bool   `yaml:"dev_mode"`    // Bypass auth, use dev_user (for local development)
-	DevUser    string `yaml:"dev_user"`    // Email to use in dev mode (default: "dev@localhost")
+	AuthHeader  string `yaml:"auth_header"`  // HTTP header containing user email (default: "oidc-email")
+	SeedAdmin   string `yaml:"seed_admin"`   // First admin email to create on startup
+	DevMode     bool   `yaml:"dev_mode"`     // Bypass auth, use dev_user (for local development)
+	DevUser     string `yaml:"dev_user"`     // Email to use in dev mode (default: "dev@localhost")
+	RequireAuth bool   `yaml:"require_auth"` // Reject requests with 403 if auth header is missing
 }
 
 // GitHubConfig represents GitHub App authentication configuration

@@ -26,6 +26,7 @@ type AuthMiddleware struct {
 	adminService *service.AdminService
 	devMode      bool
 	devUser      string
+	requireAuth  bool
 }
 
 // NewAuthMiddleware creates a new AuthMiddleware
@@ -35,6 +36,7 @@ func NewAuthMiddleware(cfg *config.Config, adminService *service.AdminService) *
 		adminService: adminService,
 		devMode:      cfg.Web.DevMode,
 		devUser:      cfg.GetDevUser(),
+		requireAuth:  cfg.Web.RequireAuth,
 	}
 }
 
@@ -62,6 +64,9 @@ func (m *AuthMiddleware) Middleware(next http.Handler) http.Handler {
 					Email:   email,
 					IsAdmin: isAdmin,
 				}
+			} else if m.requireAuth {
+				http.Error(w, "Forbidden: Authentication required", http.StatusForbidden)
+				return
 			}
 		}
 
