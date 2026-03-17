@@ -103,7 +103,7 @@ func (s *ReportService) GenerateForWeek(ctx context.Context, repoName string, we
 		branchActivity = nil
 	}
 
-	progress.Log(ctx, "Analyzing commits", "week", weekStr, "commits", len(commits), "branches", len(branchActivity))
+	progress.Log(ctx, "Analyzing commits", "repo", repoName, "week", weekStr, "commits", len(commits), "branches", len(branchActivity))
 
 	// Generate report
 	report, err := s.generateWeeklyReport(ctx, repo, year, week, commits, branchActivity, exists)
@@ -186,7 +186,7 @@ func (s *ReportService) GenerateSince(ctx context.Context, repoName string, sinc
 			branchActivity = nil
 		}
 
-		progress.Log(ctx, "Analyzing commits", "week", weekStr, "commits", len(commits), "branches", len(branchActivity))
+		progress.Log(ctx, "Analyzing commits", "repo", repoName, "week", weekStr, "commits", len(commits), "branches", len(branchActivity))
 
 		// Generate report using shared analyzer
 		report, err := s.generateWeeklyReportWithAnalyzer(ctx, llmAnalyzer, repo, year, wk, commits, branchActivity, exists)
