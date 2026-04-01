@@ -75,7 +75,7 @@ type DatabaseConfig struct {
 
 // WebConfig represents web server and authentication configuration
 type WebConfig struct {
-	AuthHeader  string `yaml:"auth_header"`  // HTTP header containing user email (default: "oidc-email")
+	AuthHeader  string `yaml:"auth_header"`  // HTTP header containing username (default: "X-Username")
 	SeedAdmin   string `yaml:"seed_admin"`   // First admin email to create on startup
 	DevMode     bool   `yaml:"dev_mode"`     // Bypass auth, use dev_user (for local development)
 	DevUser     string `yaml:"dev_user"`     // Email to use in dev mode (default: "dev@localhost")
@@ -163,7 +163,7 @@ func DefaultConfig() *Config {
 			PrivateKeyEnv:     "GITHUB_APP_PRIVATE_KEY",
 		},
 		Web: WebConfig{
-			AuthHeader: "oidc-email",
+			AuthHeader: "X-Username",
 			DevUser:    "dev@localhost",
 		},
 		Schedule: ScheduleConfig{
@@ -188,7 +188,7 @@ func (c *Config) GetAuthHeader() string {
 	if c.Web.AuthHeader != "" {
 		return c.Web.AuthHeader
 	}
-	return "oidc-email"
+	return "X-Username"
 }
 
 // GetDevUser returns the dev mode user email
