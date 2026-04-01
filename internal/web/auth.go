@@ -65,7 +65,7 @@ func (m *AuthMiddleware) Middleware(next http.Handler) http.Handler {
 					IsAdmin: isAdmin,
 				}
 			} else if m.requireAuth && r.URL.Path != "/healthz" {
-				http.Error(w, "Forbidden: Authentication required", http.StatusForbidden)
+				denyAccess(w, r, http.StatusForbidden, "Forbidden: Authentication required", "expected_header", m.headerName)
 				return
 			}
 		}
@@ -86,6 +86,18 @@ func (m *AuthMiddleware) Middleware(next http.Handler) http.Handler {
 	})
 }
 
+// denyAccess logs an access denial and writes the HTTP error response.
+func denyAccess(w http.ResponseWriter, r *http.Request, status int, reason string, extra ...any) {
+	user := "anonymous"
+	if u := GetUser(r); u != nil {
+		user = u.Email
+	}
+	args := []any{"method", r.Method, "path", r.URL.Path, "user", user, "reason", reason}
+	args = append(args, extra...)
+	slog.Warn("access denied", args...)
+	http.Error(w, reason, status)
+}
+
 // GetUser retrieves the AuthUser from the request context
 func GetUser(r *http.Request) *AuthUser {
 	user, ok := r.Context().Value(authUserKey).(*AuthUser)
@@ -100,7 +112,7 @@ func RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := GetUser(r)
 		if user == nil || !user.IsAdmin {
-			http.Error(w, "Forbidden: Admin access required", http.StatusForbidden)
+			denyAccess(w, r, http.StatusForbidden, "Forbidden: Admin access required")
 			return
 		}
 		next(w, r)
@@ -112,7 +124,7 @@ func RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := GetUser(r)
 		if user == nil {
-			http.Error(w, "Unauthorized: Authentication required", http.StatusUnauthorized)
+			denyAccess(w, r, http.StatusUnauthorized, "Unauthorized: Authentication required")
 			return
 		}
 		next(w, r)
