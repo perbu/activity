@@ -64,7 +64,7 @@ func (m *AuthMiddleware) Middleware(next http.Handler) http.Handler {
 					Email:   email,
 					IsAdmin: isAdmin,
 				}
-			} else if m.requireAuth {
+			} else if m.requireAuth && r.URL.Path != "/healthz" {
 				http.Error(w, "Forbidden: Authentication required", http.StatusForbidden)
 				return
 			}
