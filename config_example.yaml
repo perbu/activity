@@ -2,6 +2,23 @@
 # Copy to ~/.config/activity/config.yaml
 
 data_dir: "~/.local/share/activity"
+debug: false                    # Enable debug logging
+
+# PostgreSQL database configuration
+# DSN can also be set via DATABASE_URL environment variable
+database:
+  dsn: "postgres://user:pass@localhost:5432/activity?sslmode=disable"
+  max_open_conns: 25            # Maximum open connections (default: 25)
+  max_idle_conns: 5             # Maximum idle connections (default: 5)
+  conn_max_lifetime_seconds: 300 # Connection max lifetime in seconds (default: 300)
+
+# Web server and authentication configuration
+web:
+  auth_header: "oidc-email"     # HTTP header containing user email
+  seed_admin: "admin@example.com" # First admin email to create on startup
+  dev_mode: false               # Bypass auth, use dev_user (for local development)
+  dev_user: "dev@localhost"     # Email to use in dev mode
+  require_auth: false           # Reject requests with 403 if auth header is missing
 
 llm:
   provider: "gemini"
@@ -16,6 +33,7 @@ llm:
   use_agent: true           # Set to false for Phase 2 simple mode
   max_diff_fetches: 20      # Max diffs agent can fetch per analysis
   max_diff_size_kb: 50      # Max size of each diff in KB
+  max_pr_data_size_kb: 50   # Max size of pre-fetched PR data in KB
   max_total_tokens: 5000000 # ~$0.50 cost limit
   enable_tool_logs: true # Log agent tool calls for debugging
 
@@ -35,3 +53,30 @@ github:
   app_id_env: "GITHUB_APP_ID"
   installation_id_env: "GITHUB_INSTALLATION_ID"
   private_key_env: "GITHUB_APP_PRIVATE_KEY"
+
+# Newsletter email configuration (via SendGrid)
+newsletter:
+  enabled: false
+  auto_send: false              # Automatically send newsletters (backward compat, prefer schedule)
+  # sendgrid_api_key: ""        # Direct API key (takes precedence over env var)
+  sendgrid_api_key_env: "SENDGRID_API_KEY"
+  from_email: "activity@example.com"
+  from_name: "Activity Digest"
+  subject_prefix: "[Activity]"
+
+# Weekly automation pipeline schedule
+schedule:
+  enabled: false                # Enable the weekly pipeline (update repos, generate reports, send newsletter)
+  day: "monday"                 # Day of week to run
+  hour: 2                       # Hour to run, 0-23
+  minute: 42                    # Minute to run, 0-59
+  notify_admins: true           # Email admins on pipeline errors
+
+# Forgejo/Gitea instances (for private repositories)
+# forgejo:
+#   - name: "codeberg"
+#     base_url: "https://codeberg.org"
+#     token_env: "CODEBERG_TOKEN"
+#   - name: "internal"
+#     base_url: "https://gitea.internal.example.com"
+#     token_env: "INTERNAL_GITEA_TOKEN"
