@@ -10,9 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/perbu/activity/internal/testutil"
 )
 
 var testDSN string
@@ -23,39 +21,16 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 
-	ctx := context.Background()
-
-	pgContainer, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("testdb"),
-		postgres.WithUsername("testuser"),
-		postgres.WithPassword("testpass"),
-		testcontainers.WithWaitStrategy(
-			wait.ForAll(
-				wait.ForLog("database system is ready to accept connections").
-					WithOccurrence(2).
-					WithStartupTimeout(60*time.Second),
-				wait.ForListeningPort("5432/tcp"),
-			),
-		),
-	)
+	dsn, terminate, err := testutil.StartPostgresContainer(context.Background())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to start postgres container: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
-
-	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		pgContainer.Terminate(ctx)
-		fmt.Fprintf(os.Stderr, "failed to get connection string: %v\n", err)
-		os.Exit(1)
-	}
-
-	testDSN = connStr
+	testDSN = dsn
 
 	code := m.Run()
 
-	pgContainer.Terminate(ctx)
+	terminate()
 	os.Exit(code)
 }
 

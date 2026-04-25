@@ -53,12 +53,20 @@ Newsletter composition and delivery system. The `Composer` builds email content 
 repository summaries and formatting them using HTML templates. The `Sender` coordinates delivery via the email package,
 tracking which newsletters have been sent to which subscribers in the database.
 
+## leader
+
+Single-instance leader election backed by a session-level PostgreSQL advisory lock. The `Elector` opens a dedicated
+connection, calls `pg_try_advisory_lock`, and holds the lock by keeping the connection alive (heartbeat ping). When the
+process exits or the connection breaks, the lock is released and another replica can take over. The scheduler uses this
+to ensure only one replica runs the weekly pipeline; HTTP traffic (including admin actions) is served by all replicas.
+
 ## scheduler
 
 Runs the weekly automation pipeline on a configurable schedule (default: Monday 02:42). When `schedule.enabled` is true,
 the pipeline runs three steps in sequence: update all repositories (git pull), generate reports for the previous week,
 and send newsletters. If any step fails, errors are collected and emailed to all admins (when `schedule.notify_admins`
 is true and SendGrid is configured). Also supports backward compatibility with `newsletter.auto_send` (newsletter-only).
+Pipeline ticks are gated by an `IsLeader` callback (see `internal/leader`); non-leader replicas log and skip.
 
 ## progress
 

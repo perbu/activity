@@ -12,6 +12,7 @@ import (
 
 	"github.com/perbu/activity/internal/config"
 	"github.com/perbu/activity/internal/db"
+	"github.com/perbu/activity/internal/leader"
 	"github.com/perbu/activity/internal/scheduler"
 	"github.com/perbu/activity/internal/service"
 )
@@ -24,6 +25,7 @@ type Server struct {
 	templates *Templates
 	mux       *http.ServeMux
 	auth      *AuthMiddleware
+	elector   *leader.Elector
 	host      string
 	port      int
 }
@@ -44,6 +46,7 @@ func NewServer(database *db.DB, services *service.Services, cfg *config.Config, 
 		templates: templates,
 		mux:       http.NewServeMux(),
 		auth:      auth,
+		elector:   leader.New(database.DB, leader.SchedulerLockKey, "scheduler"),
 		host:      host,
 		port:      port,
 	}
@@ -143,8 +146,13 @@ func (s *Server) Start() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Elect a single leader across replicas via a Postgres advisory lock; only
+	// the leader runs the scheduled pipeline. Non-leaders still serve all
+	// HTTP traffic, including admin actions.
+	go s.elector.Run(ctx)
+
 	// Start scheduled pipeline (update repos, generate reports, send newsletter)
-	sched := scheduler.New(s.services, s.cfg, s.db)
+	sched := scheduler.New(s.services, s.cfg, s.db, s.elector.IsLeader)
 	go sched.Run(ctx)
 
 	// Start server in a goroutine

@@ -180,7 +180,50 @@ spec:
       targetPort: 8080
 ```
 
-> **Note:** Only one replica can run at a time since the PVC is `ReadWriteOnce` and git clones in the data directory aren't safe for concurrent access.
+### Single-replica vs. high-availability
+
+The example above runs **one replica** with `strategy: Recreate` and a `ReadWriteOnce` PVC. This is the simplest setup; the tradeoff is a brief downtime (~30s) on every rollout while the old pod releases the volume and the new one attaches. For most installations of a weekly batch tool this is fine.
+
+For zero-downtime rollouts, run **two replicas as a StatefulSet** with `volumeClaimTemplates` so each pod gets its own PVC. Activity uses Postgres advisory-lock leader election to ensure only one replica ever owns the data directory and runs scheduled jobs:
+
+```yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: activity
+spec:
+  serviceName: activity
+  replicas: 2
+  selector:
+    matchLabels:
+      app: activity
+  template:
+    # ... same pod template as the Deployment example above ...
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 10Gi
+```
+
+This produces one PVC per pod (`data-activity-0`, `data-activity-1`) — no `ReadWriteMany` shared volume needed (and not wanted: git is not safe over NFS/CephFS with concurrent writers).
+
+### How leader election works
+
+Both replicas connect to the same Postgres database. On startup each opens a dedicated connection and calls `pg_try_advisory_lock(<key>)`:
+
+- The first instance to acquire the lock holds it on its session for the lifetime of the connection. It runs the scheduled weekly pipeline (repo updates, report generation, newsletter sends).
+- The second instance sees the lock held, stays in standby, and re-polls every ~30s.
+- When the leader exits — graceful shutdown, crash, or any failure that closes the TCP connection — Postgres releases the session-level lock automatically. On its next poll the standby acquires the lock and takes over.
+
+Implementation lives in `internal/leader`. The lock key (`0x6163746976697479`, ASCII for "activity") is a single namespace shared by all instances pointed at the same database, so no extra coordination is needed.
+
+Reads (dashboard, repo browsing, report viewing) hit the database only and work on either replica. The standby's PVC is unused until that pod becomes leader, at which point the next pipeline run will `git fetch` everything it needs. The current state is visible at `/admin/actions` as a status badge ("Advisory lock held — scheduled jobs enabled" / "Standby — another instance is leader").
+
+> **Caveat:** Manual admin write actions (Update Repos / Generate Reports / Send Newsletters) currently run on whichever replica receives the HTTP request, not just the leader. If you trigger one on the standby it will operate on that pod's (possibly empty or stale) data dir. Until that's gated, send admin writes only to the leader, or stick with the single-replica deployment.
 
 ## Running
 
@@ -318,6 +361,7 @@ internal/
   forge/              - Forge integration (GitHub, etc.)
   git/                - Git operations
   github/             - GitHub App authentication
+  leader/             - Postgres advisory-lock leader election
   llm/                - LLM client abstraction
   newsletter/         - Newsletter composition and sending
   service/            - Business logic layer

@@ -19,14 +19,21 @@ type Scheduler struct {
 	services *service.Services
 	cfg      *config.Config
 	db       *db.DB
+	isLeader func() bool
 }
 
-// New creates a new Scheduler.
-func New(services *service.Services, cfg *config.Config, database *db.DB) *Scheduler {
+// New creates a new Scheduler. isLeader gates pipeline execution: when it
+// returns false, the scheduled tick logs and skips the run. A nil isLeader is
+// treated as "always leader" (single-instance deployments and tests).
+func New(services *service.Services, cfg *config.Config, database *db.DB, isLeader func() bool) *Scheduler {
+	if isLeader == nil {
+		isLeader = func() bool { return true }
+	}
 	return &Scheduler{
 		services: services,
 		cfg:      cfg,
 		db:       database,
+		isLeader: isLeader,
 	}
 }
 
@@ -54,6 +61,11 @@ func (s *Scheduler) Run(ctx context.Context) {
 			timer.Stop()
 			return
 		case <-timer.C:
+		}
+
+		if !s.isLeader() {
+			slog.Info("Pipeline tick skipped: instance is not leader")
+			continue
 		}
 
 		s.runPipeline(ctx)

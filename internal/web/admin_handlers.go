@@ -328,7 +328,10 @@ func (s *Server) handleAdminActions(w http.ResponseWriter, r *http.Request) {
 		Title:     "Admin - Actions",
 		ActiveNav: "admin",
 		User:      GetUser(r),
-		Content:   AdminActionsData{},
+		Content: AdminActionsData{
+			ScheduleEnabled: s.cfg.ScheduleEnabled(),
+			IsLeader:        s.elector.IsLeader(),
+		},
 	}
 
 	s.render(w, s.templates.adminActions, data)

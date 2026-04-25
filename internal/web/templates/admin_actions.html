@@ -7,6 +7,24 @@
         </div>
     </div>
 
+    {{with .Content}}
+    <div class="aa-leader aa-leader--{{if not .ScheduleEnabled}}off{{else if .IsLeader}}on{{else}}standby{{end}}">
+        <span class="aa-leader-dot"></span>
+        <div class="aa-leader-text">
+            {{if not .ScheduleEnabled}}
+                <span class="aa-leader-state">Scheduler disabled</span>
+                <span class="aa-leader-detail">No scheduled jobs are configured to run.</span>
+            {{else if .IsLeader}}
+                <span class="aa-leader-state">Advisory lock held &middot; scheduled jobs enabled</span>
+                <span class="aa-leader-detail">This instance holds the Postgres advisory lock and runs the weekly pipeline.</span>
+            {{else}}
+                <span class="aa-leader-state">Standby &middot; another instance is leader</span>
+                <span class="aa-leader-detail">Scheduled jobs run on whichever replica holds the advisory lock.</span>
+            {{end}}
+        </div>
+    </div>
+    {{end}}
+
     <div class="aa-section" data-step="01">
         <div class="aa-section-head">
             <h2 class="aa-section-title">Update Repositories</h2>
@@ -200,6 +218,80 @@ function runNewsletterAction(btn) {
     font-weight: 600;
     color: var(--text-primary);
     letter-spacing: -0.01em;
+}
+
+/* ── Leader status ──────────────────────────────────── */
+.aa-leader {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    margin-bottom: 1.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-left-width: 3px;
+    border-radius: 6px;
+}
+
+.aa-leader--on {
+    border-left-color: var(--success);
+}
+
+.aa-leader--standby {
+    border-left-color: var(--text-muted);
+}
+
+.aa-leader--off {
+    border-left-color: var(--border);
+    opacity: 0.7;
+}
+
+.aa-leader-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.aa-leader--on .aa-leader-dot {
+    background: var(--success);
+    box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.18);
+    animation: aa-leader-pulse 2.4s ease-in-out infinite;
+}
+
+.aa-leader--standby .aa-leader-dot {
+    background: var(--text-muted);
+    opacity: 0.6;
+}
+
+.aa-leader-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    line-height: 1.4;
+}
+
+.aa-leader-state {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: 0.01em;
+}
+
+.aa-leader--standby .aa-leader-state,
+.aa-leader--off .aa-leader-state {
+    color: var(--text-secondary);
+}
+
+.aa-leader-detail {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+@keyframes aa-leader-pulse {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.18); }
+    50%      { box-shadow: 0 0 0 5px rgba(63, 185, 80, 0.05); }
 }
 
 /* ── Sections ───────────────────────────────────────── */

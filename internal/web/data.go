@@ -169,7 +169,9 @@ type SubscriptionRepoView struct {
 
 // AdminActionsData is the view model for admin actions page
 type AdminActionsData struct {
-	LastUpdate     string
-	LastReportGen  string
-	LastNewsletter string
+	LastUpdate      string
+	LastReportGen   string
+	LastNewsletter  string
+	ScheduleEnabled bool
+	IsLeader        bool
 }
