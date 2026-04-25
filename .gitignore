@@ -17,6 +17,9 @@ data/
 # Environment variables
 .env
 
+# Secrets
+*.pem
+
 # IDE
 .idea/
 .vscode/
