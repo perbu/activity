@@ -177,7 +177,7 @@ func (s *RepoService) Add(ctx context.Context, opts AddOptions) (*db.Repository,
 func (s *RepoService) Remove(name string, keepFiles bool) error {
 	repo, err := s.db.GetRepositoryByName(name)
 	if err != nil {
-		return fmt.Errorf("repository not found: %s", name)
+		return fmt.Errorf("repository not found: %s: %w", name, err)
 	}
 
 	if err := s.db.DeleteRepository(repo.ID); err != nil {
@@ -200,7 +200,7 @@ func (s *RepoService) Remove(name string, keepFiles bool) error {
 func (s *RepoService) Activate(name string) error {
 	repo, err := s.db.GetRepositoryByName(name)
 	if err != nil {
-		return fmt.Errorf("repository not found: %s", name)
+		return fmt.Errorf("repository not found: %s: %w", name, err)
 	}
 
 	if repo.Active {
@@ -219,7 +219,7 @@ func (s *RepoService) Activate(name string) error {
 func (s *RepoService) Deactivate(name string) error {
 	repo, err := s.db.GetRepositoryByName(name)
 	if err != nil {
-		return fmt.Errorf("repository not found: %s", name)
+		return fmt.Errorf("repository not found: %s: %w", name, err)
 	}
 
 	if !repo.Active {
@@ -238,7 +238,7 @@ func (s *RepoService) Deactivate(name string) error {
 func (s *RepoService) SetURL(name, newURL string) error {
 	repo, err := s.db.GetRepositoryByName(name)
 	if err != nil {
-		return fmt.Errorf("repository not found: %s", name)
+		return fmt.Errorf("repository not found: %s: %w", name, err)
 	}
 
 	oldURL := repo.URL
@@ -265,7 +265,7 @@ func (s *RepoService) SetURL(name, newURL string) error {
 func (s *RepoService) UpdateSettings(name string, opts UpdateOptions) error {
 	repo, err := s.db.GetRepositoryByName(name)
 	if err != nil {
-		return fmt.Errorf("repository not found: %s", name)
+		return fmt.Errorf("repository not found: %s: %w", name, err)
 	}
 
 	// If URL changed, update git remote
@@ -326,7 +326,7 @@ type UpdateResult struct {
 func (s *RepoService) Update(ctx context.Context, name string) (*UpdateResult, error) {
 	repo, err := s.db.GetRepositoryByName(name)
 	if err != nil {
-		return nil, fmt.Errorf("repository not found: %s", name)
+		return nil, fmt.Errorf("repository not found: %s: %w", name, err)
 	}
 
 	repoPath := s.repoPath(repo.Name)

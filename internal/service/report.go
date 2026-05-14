@@ -61,7 +61,7 @@ type GenerateResult struct {
 func (s *ReportService) GenerateForWeek(ctx context.Context, repoName string, weekStr string, force bool) (*GenerateResult, error) {
 	repo, err := s.db.GetRepositoryByName(repoName)
 	if err != nil {
-		return nil, fmt.Errorf("repository not found: %s", repoName)
+		return nil, fmt.Errorf("repository not found: %s: %w", repoName, err)
 	}
 
 	year, week, err := git.ParseISOWeek(weekStr)
@@ -123,7 +123,7 @@ func (s *ReportService) GenerateForWeek(ctx context.Context, repoName string, we
 func (s *ReportService) GenerateSince(ctx context.Context, repoName string, sinceDate string, force bool) (*GenerateResult, error) {
 	repo, err := s.db.GetRepositoryByName(repoName)
 	if err != nil {
-		return nil, fmt.Errorf("repository not found: %s", repoName)
+		return nil, fmt.Errorf("repository not found: %s: %w", repoName, err)
 	}
 
 	sinceTime, err := time.Parse("2006-01-02", sinceDate)
@@ -275,7 +275,7 @@ func (s *ReportService) GetReport(id int64) (*db.WeeklyReport, error) {
 func (s *ReportService) GetLatestReport(repoName string) (*db.WeeklyReport, error) {
 	repo, err := s.db.GetRepositoryByName(repoName)
 	if err != nil {
-		return nil, fmt.Errorf("repository not found: %s", repoName)
+		return nil, fmt.Errorf("repository not found: %s: %w", repoName, err)
 	}
 	return s.db.GetLatestWeeklyReport(repo.ID)
 }

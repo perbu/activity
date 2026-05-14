@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log/slog"
-	"strings"
 	"time"
 
 	openapitypes "github.com/oapi-codegen/runtime/types"
@@ -64,11 +64,9 @@ func (i *Impl) GetReport(_ context.Context, req GetReportRequestObject) (GetRepo
 	return GetReport200JSONResponse(toReport(report)), nil
 }
 
-// isNotFound matches the db package's "not found" error text. Brittle but
-// consistent with how the rest of the codebase signals missing rows; revisit
-// when db gains a proper sentinel.
+// isNotFound checks whether err wraps db.ErrNotFound.
 func isNotFound(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "not found")
+	return errors.Is(err, db.ErrNotFound)
 }
 
 func toRepository(r *db.Repository) Repository {

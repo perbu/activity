@@ -50,7 +50,7 @@ func (s *NewsletterService) AddSubscriber(email string, subscribeAll bool) (*db.
 func (s *NewsletterService) RemoveSubscriber(email string) error {
 	sub, err := s.db.GetSubscriberByEmail(email)
 	if err != nil {
-		return fmt.Errorf("subscriber not found: %s", email)
+		return fmt.Errorf("subscriber not found: %s: %w", email, err)
 	}
 
 	if err := s.db.DeleteSubscriber(sub.ID); err != nil {
@@ -75,7 +75,7 @@ func (s *NewsletterService) GetSubscriber(email string) (*db.Subscriber, error) 
 func (s *NewsletterService) Subscribe(email, repoName string) error {
 	sub, err := s.db.GetSubscriberByEmail(email)
 	if err != nil {
-		return fmt.Errorf("subscriber not found: %s", email)
+		return fmt.Errorf("subscriber not found: %s: %w", email, err)
 	}
 
 	if sub.SubscribeAll {
@@ -84,7 +84,7 @@ func (s *NewsletterService) Subscribe(email, repoName string) error {
 
 	repo, err := s.db.GetRepositoryByName(repoName)
 	if err != nil {
-		return fmt.Errorf("repository not found: %s", repoName)
+		return fmt.Errorf("repository not found: %s: %w", repoName, err)
 	}
 
 	// Check if already subscribed
@@ -111,7 +111,7 @@ func (s *NewsletterService) Unsubscribe(email, repoName string) error {
 
 	repo, err := s.db.GetRepositoryByName(repoName)
 	if err != nil {
-		return fmt.Errorf("repository not found: %s", repoName)
+		return fmt.Errorf("repository not found: %s: %w", repoName, err)
 	}
 
 	if err := s.db.DeleteSubscriptionBySubscriberAndRepo(sub.ID, repo.ID); err != nil {
@@ -145,7 +145,7 @@ func (s *NewsletterService) GetOrCreateSubscriber(email string) (*db.Subscriber,
 func (s *NewsletterService) SetSubscribeAll(email string, subscribeAll bool) error {
 	sub, err := s.db.GetSubscriberByEmail(email)
 	if err != nil {
-		return fmt.Errorf("subscriber not found: %s", email)
+		return fmt.Errorf("subscriber not found: %s: %w", email, err)
 	}
 	sub.SubscribeAll = subscribeAll
 	if err := s.db.UpdateSubscriber(sub); err != nil {
