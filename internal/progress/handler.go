@@ -1,3 +1,10 @@
+// Package progress provides a slog handler that forwards tagged log messages
+// to a context-attached sink for real-time progress streaming.
+//
+// Usage convention:
+//   - progress.Log(ctx, msg, args...)  — user-visible progress, streams via SSE
+//   - slog.Info(msg, args...)           — server-side diagnostic logging
+//   - slog.Debug / slog.Warn / slog.Error — as above, at appropriate levels
 package progress
 
 import (
