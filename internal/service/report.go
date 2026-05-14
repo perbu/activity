@@ -229,7 +229,8 @@ func (s *ReportService) GenerateLastWeek(ctx context.Context, force bool) ([]*Ge
 	return s.GenerateLastNWeeks(ctx, 1, force)
 }
 
-// GenerateLastNWeeks generates reports for the last N complete weeks for all active repos
+// GenerateLastNWeeks generates reports for the last N complete weeks for all active repos.
+// Uses a single shared LLM client (and underlying connection) for efficiency.
 func (s *ReportService) GenerateLastNWeeks(ctx context.Context, n int, force bool) ([]*GenerateResult, error) {
 	if n < 1 {
 		n = 1
@@ -241,6 +242,14 @@ func (s *ReportService) GenerateLastNWeeks(ctx context.Context, n int, force boo
 		return nil, fmt.Errorf("failed to list repositories: %w", err)
 	}
 
+	// Create a single LLM client shared across all repo-week combinations.
+	llmClient, err := llm.NewClient(ctx, s.cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize LLM client: %w", err)
+	}
+	defer llmClient.Close()
+	llmAnalyzer := analyzer.New(llmClient, s.db, s.cfg)
+
 	now := time.Now()
 	var results []*GenerateResult
 	for weeksBack := 1; weeksBack <= n; weeksBack++ {
@@ -249,17 +258,51 @@ func (s *ReportService) GenerateLastNWeeks(ctx context.Context, n int, force boo
 		weekStr := git.FormatISOWeek(year, week)
 
 		for _, repo := range repos {
-			result, err := s.GenerateForWeek(ctx, repo.Name, weekStr, force)
+			exists, err := s.db.WeeklyReportExists(repo.ID, year, week)
+			if err != nil {
+				slog.Error("Failed to check existing report", "repo", repo.Name, "error", err)
+				continue
+			}
+			if exists && !force {
+				results = append(results, &GenerateResult{Skipped: 1, RepoName: repo.Name, WeekLabel: weekStr})
+				continue
+			}
+
+			if err := s.fetchBranches(repo); err != nil {
+				slog.Warn("Failed to fetch branches", "error", err)
+			}
+
+			repoPath := s.repoPath(repo.Name)
+			commits, err := git.GetCommitsForWeek(repoPath, year, week)
+			if err != nil {
+				slog.Error("Failed to get commits", "repo", repo.Name, "week", weekStr, "error", err)
+				continue
+			}
+			if len(commits) == 0 {
+				results = append(results, &GenerateResult{NoCommits: 1, RepoName: repo.Name, WeekLabel: weekStr})
+				continue
+			}
+
+			branchActivity, err := git.GetFeatureBranchActivity(repoPath, repo.Branch, year, week)
+			if err != nil {
+				slog.Warn("Failed to get branch activity", "week", weekStr, "error", err)
+				branchActivity = nil
+			}
+
+			progress.Log(ctx, "Analyzing commits", "repo", repo.Name, "week", weekStr, "commits", len(commits), "branches", len(branchActivity))
+
+			report, err := s.generateWeeklyReportWithAnalyzer(ctx, llmAnalyzer, repo, year, week, commits, branchActivity, exists)
 			if err != nil {
 				slog.Error("Failed to generate report", "repo", repo.Name, "error", err)
 				continue
 			}
-			if result.NoCommits > 0 {
-				progress.Log(ctx, "No commits found", "week", weekStr, "repo", repo.Name)
-			} else if result.Skipped > 0 {
-				progress.Log(ctx, "Report already exists, skipping", "week", weekStr, "repo", repo.Name)
-			}
-			results = append(results, result)
+
+			results = append(results, &GenerateResult{
+				Generated: 1,
+				RepoName:  repo.Name,
+				WeekLabel: weekStr,
+				ReportID:  report.ID,
+			})
 		}
 	}
 
