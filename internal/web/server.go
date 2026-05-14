@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/perbu/activity/internal/config"
@@ -132,8 +130,9 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /admin/admins/remove", RequireAdmin(s.handleAdminAdminRemove))
 }
 
-// Start starts the HTTP server with graceful shutdown on SIGINT/SIGTERM.
-func (s *Server) Start() error {
+// Start starts the HTTP server and blocks until ctx is cancelled or the
+// listener errors. On cancellation it performs a graceful shutdown.
+func (s *Server) Start(ctx context.Context) error {
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
 	handler := s.auth.Middleware(s.mux)
 
@@ -141,10 +140,6 @@ func (s *Server) Start() error {
 		Addr:    addr,
 		Handler: handler,
 	}
-
-	// Listen for shutdown signals
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	// Elect a single leader across replicas via a Postgres advisory lock; only
 	// the leader runs the scheduled pipeline. Non-leaders still serve all

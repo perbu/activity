@@ -21,8 +21,43 @@ type Config struct {
 	Newsletter NewsletterConfig `yaml:"newsletter"`
 	GitHub     GitHubConfig     `yaml:"github"`
 	Web        WebConfig        `yaml:"web"`
+	API        APIConfig        `yaml:"api"`
 	Schedule   ScheduleConfig   `yaml:"schedule"`
 	Forgejo    []ForgejoConfig  `yaml:"forgejo"` // Forgejo/Gitea instances
+}
+
+// APIConfig configures the read-only HTTP API for AI-agent consumption.
+// The API runs on a separate port from the OIDC-protected web UI and is
+// authenticated via static bearer tokens.
+type APIConfig struct {
+	Enabled   bool     `yaml:"enabled"`
+	Host      string   `yaml:"host"`
+	Port      int      `yaml:"port"`
+	Tokens    []string `yaml:"tokens"`
+	TokensEnv string   `yaml:"tokens_env"` // Env var with comma-separated tokens; appended to Tokens.
+}
+
+// ResolvedTokens returns the set of accepted bearer tokens, combining the
+// inline Tokens list with any comma-separated values from TokensEnv.
+func (c *APIConfig) ResolvedTokens() []string {
+	out := make([]string, 0, len(c.Tokens))
+	for _, t := range c.Tokens {
+		t = strings.TrimSpace(t)
+		if t != "" {
+			out = append(out, t)
+		}
+	}
+	if c.TokensEnv != "" {
+		if raw := os.Getenv(c.TokensEnv); raw != "" {
+			for t := range strings.SplitSeq(raw, ",") {
+				t = strings.TrimSpace(t)
+				if t != "" {
+					out = append(out, t)
+				}
+			}
+		}
+	}
+	return out
 }
 
 // ScheduleConfig represents the weekly automation pipeline configuration
@@ -165,6 +200,11 @@ func DefaultConfig() *Config {
 		Web: WebConfig{
 			AuthHeader: "X-Username",
 			DevUser:    "dev@localhost",
+		},
+		API: APIConfig{
+			Enabled: false,
+			Host:    "localhost",
+			Port:    8081,
 		},
 		Schedule: ScheduleConfig{
 			Day:          "monday",

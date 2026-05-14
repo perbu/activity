@@ -20,6 +20,17 @@ web:
   dev_user: "dev@localhost"     # Email to use in dev mode
   require_auth: false           # Reject requests with 403 if auth header is missing
 
+# Read-only API for AI-agent consumption. Runs on its own port, separate
+# from the OIDC-protected web UI. Authenticates via static bearer tokens
+# (Authorization: Bearer <token>). See api/openapi.yaml for the schema.
+api:
+  enabled: false                # Set true to start the API server
+  host: "localhost"             # Bind host (use 0.0.0.0 to listen on all interfaces)
+  port: 8081                    # Listen port
+  # tokens:                     # Inline tokens (prefer tokens_env in production)
+  #   - "your-bearer-token"
+  tokens_env: "ACTIVITY_API_TOKENS"  # Env var with comma-separated tokens
+
 llm:
   provider: "gemini"
   model: "gemini-3.0-flash"

@@ -12,6 +12,7 @@ AI-powered git commit analyzer that generates human-readable summaries of reposi
 - **Newsletter**: Email subscribers with activity digests via SendGrid
 - **Admin Interface**: Manage repositories, subscribers, and admins through the web UI
 - **Auth Proxy Integration**: Admin routes protected via configurable auth header
+- **Read-only HTTP API**: OpenAPI-described JSON API for AI agents and other automated clients, served on a separate port with bearer-token auth
 
 ## Requirements
 
@@ -261,11 +262,78 @@ Flags: `--port` (default 8080), `--host` (default localhost), `--config`, `--dat
 - `/admin/actions` — Trigger analysis and report generation
 - `/admin/admins` — Admin user management
 
+## HTTP API
+
+Activity exposes a read-only JSON API on a **separate port** from the OIDC-protected web UI, intended for consumption by AI agents and other automated clients. The contract is defined in [`api/openapi.yaml`](api/openapi.yaml) — point any OpenAPI client generator at that file.
+
+### Endpoints
+
+All endpoints are mounted under `/v1` and require a bearer token. `/healthz` is also served on the API port and is unauthenticated.
+
+| Method & Path | Description |
+| --- | --- |
+| `GET /v1/repos` | List repositories. Optional `?active=true|false` filter. |
+| `GET /v1/repos/{name}/reports` | List weekly reports for a repository. Optional `?year=YYYY` filter. |
+| `GET /v1/reports/{id}` | Fetch a full report including the AI-generated summary, author breakdown, and per-commit metadata. |
+
+### Enabling the API
+
+Add an `api:` block to your config and supply at least one bearer token:
+
+```yaml
+api:
+  enabled: true
+  host: "0.0.0.0"         # use "localhost" if only reachable via a sidecar
+  port: 8081
+  tokens_env: ACTIVITY_API_TOKENS  # comma-separated tokens (recommended)
+  # tokens:                          # or inline (avoid in production)
+  #   - "your-bearer-token"
+```
+
+Then set the env var with one or more tokens:
+
+```bash
+export ACTIVITY_API_TOKENS="$(openssl rand -hex 32),$(openssl rand -hex 32)"
+```
+
+`tokens` and `tokens_env` are additive — anything in either is accepted. Tokens are compared in constant time. If `api.enabled` is true and no tokens resolve, the server refuses to start.
+
+Once running, query the API:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8081/v1/repos
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8081/v1/repos/myrepo/reports?year=2026
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8081/v1/reports/42
+```
+
+### Deployment notes
+
+The API runs in the same process as the web server, so a single container/replica hosts both. In Kubernetes or Docker, expose port 8081 alongside port 8080:
+
+```yaml
+ports:
+  - containerPort: 8080  # web UI
+  - containerPort: 8081  # API
+```
+
+Treat the API port as more sensitive than the web port — keep it on an internal network unless the bearer tokens are managed like other production secrets.
+
+### Regenerating client/server code
+
+The Go server types in `internal/api/api.gen.go` are generated from the OpenAPI spec using [oapi-codegen](https://github.com/oapi-codegen/oapi-codegen). To regenerate after editing `api/openapi.yaml`:
+
+```bash
+go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.0
+go generate ./internal/api/...
+```
+
 ## Authentication
 
 Activity is designed to run behind an auth proxy (e.g., OAuth2 Proxy, Authelia). The proxy provides the authenticated user's email in a configurable HTTP header (default: `oidc-email`). Admin access is controlled via the `admins` table in PostgreSQL.
 
 In development mode (`dev_mode: true`), authentication is bypassed and a configurable `dev_user` email is used, automatically treated as admin.
+
+The HTTP API on the separate port uses **static bearer tokens** instead of the OIDC header — see the [HTTP API](#http-api) section.
 
 ## Configuration
 
@@ -283,6 +351,12 @@ web:
   seed_admin: admin@example.com # First admin seeded on empty DB
   dev_mode: false               # Set true for local development
   dev_user: dev@localhost       # Email used in dev mode
+
+api:
+  enabled: false                # Set true to start the read-only API server
+  host: localhost               # Bind host (0.0.0.0 to listen on all interfaces)
+  port: 8081                    # API server listens on a separate port
+  tokens_env: ACTIVITY_API_TOKENS  # Env var with comma-separated bearer tokens
 
 llm:
   provider: gemini
@@ -351,9 +425,12 @@ See `CLAUDE.md` for architecture overview and package descriptions.
 ### Project Structure
 
 ```
-main.go               - Entry point, starts web server
+main.go               - Entry point, starts web and API servers
+api/
+  openapi.yaml        - OpenAPI spec (source of truth for the HTTP API)
 internal/
   analyzer/           - Analysis logic (simple + agent modes)
+  api/                - Read-only HTTP API (generated from api/openapi.yaml)
   config/             - Configuration management
   db/                 - PostgreSQL database layer
     migrations/       - Goose SQL migrations (embedded)

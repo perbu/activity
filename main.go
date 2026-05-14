@@ -1,14 +1,18 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/joho/godotenv"
+	"github.com/perbu/activity/internal/api"
 	"github.com/perbu/activity/internal/config"
 	"github.com/perbu/activity/internal/db"
 	"github.com/perbu/activity/internal/github"
@@ -122,15 +126,42 @@ func run() error {
 		}
 	}
 
-	// Create services
 	services := service.New(database, cfg, tokenProvider)
 
-	// Create and start web server
+	// Single signal-driven context shared by both servers. If either server
+	// exits (cleanly or with an error) cancellation propagates so the other
+	// shuts down too.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	var apiErrCh chan error
+	if cfg.API.Enabled {
+		apiSrv, err := api.NewServer(cfg, services)
+		if err != nil {
+			return fmt.Errorf("failed to create API server: %w", err)
+		}
+		apiErrCh = make(chan error, 1)
+		go func() {
+			err := apiSrv.Run(ctx)
+			if err != nil {
+				slog.Error("API server error", "error", err)
+			}
+			apiErrCh <- err
+			stop() // bring the web server down too
+		}()
+	}
+
 	server, err := web.NewServer(database, services, cfg, *host, *port)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}
 
 	slog.Info("Starting web server", "address", server.Address())
-	return server.Start()
+	webErr := server.Start(ctx)
+
+	stop()
+	if apiErrCh != nil {
+		<-apiErrCh
+	}
+	return webErr
 }
