@@ -86,8 +86,8 @@ func (e *Elector) runSession(ctx context.Context) error {
 	slog.Info("Acquired leadership", "name", e.name)
 	e.leader.Store(true)
 	defer func() {
-		e.leader.Store(false)
 		e.releaseLock(conn)
+		e.leader.Store(false)
 		slog.Info("Released leadership", "name", e.name)
 	}()
 
