@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/perbu/activity/internal/config"
@@ -160,102 +159,6 @@ func (a *Analyzer) AnalyzeAndSave(ctx context.Context, repo *db.Repository, from
 	}
 
 	return run, nil
-}
-
-// buildAnalysisPrompt creates the prompt for LLM analysis
-func buildAnalysisPrompt(repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, cfg *config.Config, previousSummary string, prData string) string {
-	var sb strings.Builder
-
-	sb.WriteString("You are analyzing git commits for a software project.\n\n")
-	sb.WriteString(fmt.Sprintf("Repository: %s\n", repo.Name))
-	if repo.Description.Valid && repo.Description.String != "" {
-		sb.WriteString(fmt.Sprintf("About: %s\n", repo.Description.String))
-	}
-	sb.WriteString(fmt.Sprintf("Branch: %s\n", repo.Branch))
-	sb.WriteString(fmt.Sprintf("Total commits: %d\n\n", len(commits)))
-
-	sb.WriteString("Commits (newest first):\n\n")
-
-	// Use configurable max commits limit
-	maxCommits := cfg.LLM.MaxCommits
-	if maxCommits <= 0 {
-		maxCommits = 50 // Fallback to default
-	}
-
-	limit := len(commits)
-	if limit > maxCommits {
-		limit = maxCommits
-	}
-
-	// Max message length
-	maxMsgLen := cfg.LLM.MaxMessageLength
-	if maxMsgLen <= 0 {
-		maxMsgLen = 1000 // Fallback to default
-	}
-
-	for i := 0; i < limit; i++ {
-		commit := commits[i]
-		sb.WriteString(fmt.Sprintf("Commit %d:\n", i+1))
-		sb.WriteString(fmt.Sprintf("  SHA: %s\n", commit.SHA[:8]))
-		sb.WriteString(fmt.Sprintf("  Author: %s\n", commit.Author))
-		sb.WriteString(fmt.Sprintf("  Date: %s\n", commit.Date.Format("2006-01-02 15:04")))
-
-		// Truncate long commit messages
-		message := commit.Message
-		if len(message) > maxMsgLen {
-			message = message[:maxMsgLen] + "... [truncated]"
-		}
-		sb.WriteString(fmt.Sprintf("  Message: %s\n\n", message))
-	}
-
-	if len(commits) > maxCommits {
-		sb.WriteString(fmt.Sprintf("... and %d more commits\n\n", len(commits)-maxCommits))
-	}
-
-	// Include branch activity if present
-	if len(branchActivity) > 0 {
-		sb.WriteString("## Other Branch Activity\n")
-		sb.WriteString("The following feature branches had commits this week that haven't been merged to the main branch:\n")
-		for _, ba := range branchActivity {
-			sb.WriteString(fmt.Sprintf("- %s: %d commits (", ba.BranchName, ba.CommitCount))
-			first := true
-			for author, count := range ba.AuthorCounts {
-				if !first {
-					sb.WriteString(", ")
-				}
-				sb.WriteString(fmt.Sprintf("%s: %d", author, count))
-				first = false
-			}
-			sb.WriteString(")\n")
-		}
-		sb.WriteString("\nInclude a brief mention of this parallel work in your summary.\n\n")
-	}
-
-	// Include pre-fetched PR data
-	if prData != "" {
-		sb.WriteString("## Pull Requests\n")
-		sb.WriteString("Only report on information that is present; do NOT comment on the absence of reviews or discussion.\n\n")
-		sb.WriteString(prData)
-		sb.WriteString("\n")
-	}
-
-	// Include previous week's summary for context
-	if previousSummary != "" {
-		sb.WriteString("## Previous Week's Summary (for context)\n")
-		sb.WriteString(previousSummary)
-		sb.WriteString("\n\nUse this context to maintain narrative continuity and reference ongoing work where relevant.\n\n")
-	}
-
-	// Use configured prompt (or default)
-	sb.WriteString(cfg.GetPhase2Prompt())
-	sb.WriteString("\n")
-
-	// For external repositories, add contributor analysis instruction
-	if repo.External {
-		sb.WriteString("\n5. Contributors: Brief section about active contributors and their areas of focus.\n")
-	}
-
-	return sb.String()
 }
 
 // extractAuthors gets unique author list from commits

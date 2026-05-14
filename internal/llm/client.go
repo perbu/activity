@@ -63,8 +63,8 @@ func (c *Client) GenerateText(ctx context.Context, prompt string) (string, error
 	return resp.Text(), nil
 }
 
-// GetGeminiModel returns a model.LLM instance for use with ADK agents
-func (c *Client) GetGeminiModel(ctx context.Context) (model.LLM, error) {
+// GetModel returns a model.LLM instance for use with ADK agents.
+func (c *Client) GetModel(ctx context.Context) (model.LLM, error) {
 	// Create a Gemini model using the ADK's gemini package
 	llmModel, err := gemini.NewModel(ctx, c.model, &genai.ClientConfig{
 		APIKey:  c.apiKey,

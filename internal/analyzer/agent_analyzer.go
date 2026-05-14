@@ -18,79 +18,10 @@ import (
 	"google.golang.org/genai"
 )
 
-// buildAgentPrompt creates the user prompt for the agent
-func buildAgentPrompt(repo *db.Repository, commits []git.Commit, branchActivity []git.BranchActivity, maxMessageLength int, previousSummary string, prData string) string {
-	var sb strings.Builder
-
-	sb.WriteString(fmt.Sprintf("Repository: %s\n", repo.Name))
-	if repo.Description.Valid && repo.Description.String != "" {
-		sb.WriteString(fmt.Sprintf("About: %s\n", repo.Description.String))
-	}
-	sb.WriteString(fmt.Sprintf("Branch: %s\n", repo.Branch))
-	sb.WriteString(fmt.Sprintf("Analyzing %d commits\n\n", len(commits)))
-	sb.WriteString("Commits (newest first):\n\n")
-
-	for i, commit := range commits {
-		sb.WriteString(fmt.Sprintf("Commit %d:\n", i+1))
-		sb.WriteString(fmt.Sprintf("  SHA: %s\n", commit.SHA[:8]))
-		sb.WriteString(fmt.Sprintf("  Author: %s\n", commit.Author))
-		sb.WriteString(fmt.Sprintf("  Date: %s\n", commit.Date.Format("2006-01-02")))
-
-		message := commit.Message
-		truncated := false
-		if len(message) > maxMessageLength {
-			message = message[:maxMessageLength]
-			truncated = true
-		}
-		sb.WriteString(fmt.Sprintf("  Message: %s", message))
-		if truncated {
-			sb.WriteString(" [truncated - use get_full_commit_message for complete text]")
-		}
-		sb.WriteString("\n\n")
-	}
-
-	// Include branch activity if present
-	if len(branchActivity) > 0 {
-		sb.WriteString("## Other Branch Activity\n")
-		sb.WriteString("The following feature branches had commits this week that haven't been merged to the main branch:\n")
-		for _, ba := range branchActivity {
-			sb.WriteString(fmt.Sprintf("- %s: %d commits (", ba.BranchName, ba.CommitCount))
-			first := true
-			for author, count := range ba.AuthorCounts {
-				if !first {
-					sb.WriteString(", ")
-				}
-				sb.WriteString(fmt.Sprintf("%s: %d", author, count))
-				first = false
-			}
-			sb.WriteString(")\n")
-		}
-		sb.WriteString("\nInclude a brief mention of this parallel work in your summary.\n\n")
-	}
-
-	// Include pre-fetched PR data
-	if prData != "" {
-		sb.WriteString("## Pull Requests and Reviews\n")
-		sb.WriteString("The following PR data was retrieved from the forge. Use this data directly in your analysis — do NOT call get_pr_reviews, as the data is already provided here. Only report on information that is present; do NOT comment on the absence of reviews or discussion.\n\n")
-		sb.WriteString(prData)
-		sb.WriteString("\n")
-	}
-
-	// Include previous week's summary for context
-	if previousSummary != "" {
-		sb.WriteString("## Previous Week's Summary (for context)\n")
-		sb.WriteString(previousSummary)
-		sb.WriteString("\n\nUse this context to maintain narrative continuity and reference ongoing work where relevant.\n\n")
-	}
-
-	sb.WriteString("Please analyze these commits and provide a summary.\n")
-	return sb.String()
-}
-
 // createAnalyzerAgent creates an ADK agent with tools for commit analysis
 func (a *Analyzer) createAnalyzerAgent(ctx context.Context, repo *db.Repository, repoPath string, costTracker *CostTracker, f forge.Forge, since, until time.Time, logger *AnalysisLogger) (agent.Agent, error) {
 	// Get the Gemini model from the LLM client
-	geminiModel, err := a.llmClient.GetGeminiModel(ctx)
+	geminiModel, err := a.llmClient.GetModel(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Gemini model: %w", err)
 	}
