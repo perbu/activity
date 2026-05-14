@@ -153,7 +153,11 @@ func (f *Forgejo) listClosedPRs(ctx context.Context) ([]PullRequest, error) {
 			}
 
 			if pr.MergedAt != nil && *pr.MergedAt != "" {
-				pull.MergedAt, _ = time.Parse(time.RFC3339, *pr.MergedAt)
+				if t, err := time.Parse(time.RFC3339, *pr.MergedAt); err != nil {
+					slog.Warn("Forgejo PR merged_at parse error", "pr", pr.Number, "value", *pr.MergedAt, "error", err)
+				} else {
+					pull.MergedAt = t
+				}
 			}
 			if pr.MergedBy != nil {
 				pull.MergedBy = pr.MergedBy.Login
@@ -231,7 +235,11 @@ func (f *Forgejo) getReviews(ctx context.Context, number int) ([]Review, error) 
 			Body:     r.Body,
 		}
 		if r.SubmittedAt != "" {
-			review.CreatedAt, _ = time.Parse(time.RFC3339, r.SubmittedAt)
+			if t, err := time.Parse(time.RFC3339, r.SubmittedAt); err != nil {
+				slog.Warn("Forgejo review submitted_at parse error", "author", r.User.Login, "value", r.SubmittedAt, "error", err)
+			} else {
+				review.CreatedAt = t
+			}
 		}
 		reviews = append(reviews, review)
 	}
@@ -287,7 +295,11 @@ func (f *Forgejo) getComments(ctx context.Context, number int) ([]Comment, error
 			Body:   c.Body,
 		}
 		if c.CreatedAt != "" {
-			comment.CreatedAt, _ = time.Parse(time.RFC3339, c.CreatedAt)
+			if t, err := time.Parse(time.RFC3339, c.CreatedAt); err != nil {
+				slog.Warn("Forgejo comment created_at parse error", "author", c.User.Login, "value", c.CreatedAt, "error", err)
+			} else {
+				comment.CreatedAt = t
+			}
 		}
 		comments = append(comments, comment)
 	}
