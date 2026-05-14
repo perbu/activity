@@ -3,11 +3,11 @@ package web
 import (
 	"context"
 	"fmt"
-	"html/template"
 	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/perbu/activity/internal/progress"
 	"github.com/perbu/activity/internal/service"
@@ -99,7 +99,9 @@ func (s *Server) handleAdminRepoAdd(w http.ResponseWriter, r *http.Request) {
 		branch = "main"
 	}
 
-	_, err := s.services.Repo.Add(context.Background(), service.AddOptions{
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+	_, err := s.services.Repo.Add(ctx, service.AddOptions{
 		Name:      name,
 		URL:       url,
 		Branch:    branch,
@@ -339,7 +341,7 @@ func (s *Server) handleAdminActions(w http.ResponseWriter, r *http.Request) {
 
 // handleAdminUpdateRepos handles updating all repositories
 func (s *Server) handleAdminUpdateRepos(w http.ResponseWriter, r *http.Request) {
-	results, err := s.services.Repo.UpdateAll(context.Background())
+	results, err := s.services.Repo.UpdateAll(r.Context())
 	if err != nil {
 		slog.Error("Failed to update repositories", "error", err)
 		http.Error(w, "Failed to update repositories: "+err.Error(), http.StatusInternalServerError)
@@ -360,7 +362,9 @@ func (s *Server) handleAdminGenerateReport(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Generate reports for last week for all repos
-	results, err := s.services.Report.GenerateLastWeek(context.Background(), false)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+	results, err := s.services.Report.GenerateLastWeek(ctx, false)
 	if err != nil {
 		slog.Error("Failed to generate reports", "error", err)
 		http.Error(w, "Failed to generate reports: "+err.Error(), http.StatusInternalServerError)
@@ -387,7 +391,9 @@ func (s *Server) handleAdminSendNewsletter(w http.ResponseWriter, r *http.Reques
 
 	dryRun := r.FormValue("dry_run") == "on"
 
-	result, err := s.services.Newsletter.SendLastWeek(context.Background(), dryRun, os.Stdout)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+	result, err := s.services.Newsletter.SendLastWeek(ctx, dryRun, os.Stdout)
 	if err != nil {
 		slog.Error("Failed to send newsletters", "error", err)
 		http.Error(w, "Failed to send newsletters: "+err.Error(), http.StatusInternalServerError)
@@ -426,13 +432,17 @@ func (s *Server) handleAdminAdmins(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := GetUser(r)
+	currentUser := ""
+	if user != nil {
+		currentUser = user.Email
+	}
 	data := PageData{
 		Title:     "Admin - Admin Users",
 		ActiveNav: "admin",
 		User:      user,
 		Content: AdminAdminsData{
 			Admins:      summaries,
-			CurrentUser: user.Email,
+			CurrentUser: currentUser,
 		},
 	}
 
@@ -487,6 +497,10 @@ func (s *Server) handleAdminAdminRemove(w http.ResponseWriter, r *http.Request) 
 	}
 
 	user := GetUser(r)
+	if user == nil {
+		http.Error(w, "Forbidden: Admin access required", http.StatusForbidden)
+		return
+	}
 	if admin.Email == user.Email {
 		http.Error(w, "Cannot remove yourself as admin", http.StatusBadRequest)
 		return
@@ -499,25 +513,6 @@ func (s *Server) handleAdminAdminRemove(w http.ResponseWriter, r *http.Request) 
 	}
 
 	http.Redirect(w, r, "/admin/admins", http.StatusSeeOther)
-}
-
-// renderAdminError renders an error for admin pages
-func (s *Server) renderAdminError(w http.ResponseWriter, r *http.Request, tmpl *template.Template, message string, err error) {
-	errMsg := message
-	if err != nil {
-		errMsg = message + ": " + err.Error()
-	}
-
-	data := PageData{
-		Title:     "Admin Error",
-		ActiveNav: "admin",
-		User:      GetUser(r),
-		Error:     errMsg,
-		Content:   nil,
-	}
-
-	w.WriteHeader(http.StatusInternalServerError)
-	s.render(w, tmpl, data)
 }
 
 // handleAdminUpdateReposStream handles updating all repositories with SSE streaming
