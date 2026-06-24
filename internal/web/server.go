@@ -2,10 +2,13 @@ package web
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/perbu/activity/internal/config"
@@ -130,11 +133,31 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /admin/admins/remove", RequireAdmin(s.handleAdminAdminRemove))
 }
 
+// pageViewMiddleware records a page view for every non-static GET request.
+// It must run inside the auth middleware so the user is already in context.
+func (s *Server) pageViewMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet &&
+			r.URL.Path != "/healthz" &&
+			!strings.HasPrefix(r.URL.Path, "/static/") {
+			var hash string
+			if u := GetUser(r); u != nil && u.Email != "" {
+				sum := sha256.Sum256([]byte(u.Email))
+				hash = hex.EncodeToString(sum[:])
+			}
+			if err := s.db.RecordPageView(hash, r.URL.Path); err != nil {
+				slog.Warn("failed to record page view", "error", err)
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // Start starts the HTTP server and blocks until ctx is cancelled or the
 // listener errors. On cancellation it performs a graceful shutdown.
 func (s *Server) Start(ctx context.Context) error {
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
-	handler := s.auth.Middleware(s.mux)
+	handler := s.auth.Middleware(s.pageViewMiddleware(s.mux))
 
 	srv := &http.Server{
 		Addr:    addr,

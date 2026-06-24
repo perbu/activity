@@ -6,6 +6,9 @@ type AdminDashboardData struct {
 	ReportCount     int
 	SubscriberCount int
 	AdminCount      int
+	NewslettersSent int
+	TotalPageViews  int
+	UniqueVisitors  int
 }
 
 // AdminReposData is the view model for admin repository management.

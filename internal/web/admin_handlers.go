@@ -19,17 +19,25 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
 	reports, _ := s.db.ListAllWeeklyReports(nil)
 	subscribers, _ := s.db.ListSubscribers()
 	admins, _ := s.db.ListAdmins()
+	stats, _ := s.db.GetSiteStats()
+
+	content := AdminDashboardData{
+		RepoCount:       len(repos),
+		ReportCount:     len(reports),
+		SubscriberCount: len(subscribers),
+		AdminCount:      len(admins),
+	}
+	if stats != nil {
+		content.NewslettersSent = stats.NewslettersSent
+		content.TotalPageViews = stats.TotalPageViews
+		content.UniqueVisitors = stats.UniqueVisitors
+	}
 
 	data := PageData{
 		Title:     "Admin",
 		ActiveNav: "admin",
 		User:      GetUser(r),
-		Content: AdminDashboardData{
-			RepoCount:       len(repos),
-			ReportCount:     len(reports),
-			SubscriberCount: len(subscribers),
-			AdminCount:      len(admins),
-		},
+		Content:   content,
 	}
 
 	s.render(w, s.templates.admin, data)
